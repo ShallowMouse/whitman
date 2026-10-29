@@ -24,7 +24,7 @@ static void check (bool ok, const juce::String& what)
     std::printf ("%s  %s\n", ok ? "PASS" : "FAIL", what.toRawUTF8());
 }
 
-static bool near (float a, float b, float tol = 1.0e-4f) { return std::abs (a - b) <= tol; }
+static bool approx (float a, float b, float tol = 1.0e-4f) { return std::abs (a - b) <= tol; }
 
 //==============================================================================
 // The channel names exactly as Hawthorne Route's driver gives them (HawthorneRouteDriver.cpp)
@@ -125,39 +125,39 @@ static void testMix()
     const float c = std::sqrt (0.5f);
 
     { Rig r (24); r.dc (0, 0.5f); r.run();
-      check (near (r.L(), 0.5f * c) && near (r.R(), 0.5f * c), "Unity, centre: -3 dB each side"); }
+      check (approx (r.L(), 0.5f * c) && approx (r.R(), 0.5f * c), "Unity, centre: -3 dB each side"); }
 
     { Rig r (24); r.dc (3, 0.5f); r.engine.strip (3).pan = -1.0f; r.run();
-      check (near (r.L(), 0.5f) && near (r.R(), 0.0f), "Hard left: all of it left"); }
+      check (approx (r.L(), 0.5f) && approx (r.R(), 0.0f), "Hard left: all of it left"); }
 
     { Rig r (24); r.dc (3, 0.5f); r.engine.strip (3).pan = 1.0f; r.run();
-      check (near (r.L(), 0.0f) && near (r.R(), 0.5f), "Hard right: all of it right"); }
+      check (approx (r.L(), 0.0f) && approx (r.R(), 0.5f), "Hard right: all of it right"); }
 
     { Rig r (24); r.dc (5, 0.5f); r.engine.strip (5).pan = 0.37f; r.run();
-      check (near (r.L() * r.L() + r.R() * r.R(), 0.25f), "Pan keeps constant power"); }
+      check (approx (r.L() * r.L() + r.R() * r.R(), 0.25f), "Pan keeps constant power"); }
 
     { Rig r (24); r.dc (1, 0.5f); r.engine.strip (1).gainDb = -6.0f; r.engine.strip (1).pan = -1.0f; r.run();
-      check (near (r.L(), 0.5f * juce::Decibels::decibelsToGain (-6.0f)), "Fader -6 dB"); }
+      check (approx (r.L(), 0.5f * juce::Decibels::decibelsToGain (-6.0f)), "Fader -6 dB"); }
 
     { Rig r (24); r.dc (1, 0.5f); r.engine.strip (1).gainDb = faderMinDb; r.run();
       check (r.L() == 0.0f && r.R() == 0.0f, "Fader at the bottom is off"); }
 
     { Rig r (24); r.dc (0, 0.25f); r.dc (1, 0.25f); r.engine.strip (0).pan = -1.0f; r.engine.strip (1).pan = -1.0f; r.run();
-      check (near (r.L(), 0.5f), "Tracks sum"); }
+      check (approx (r.L(), 0.5f), "Tracks sum"); }
 
     { Rig r (24); r.dc (0, 0.5f); r.dc (1, 0.5f); r.engine.strip (0).pan = -1.0f; r.engine.strip (1).pan = 1.0f;
       r.engine.strip (0).mute = true; r.run();
-      check (near (r.L(), 0.0f) && near (r.R(), 0.5f), "Mute"); }
+      check (approx (r.L(), 0.0f) && approx (r.R(), 0.5f), "Mute"); }
 
     { Rig r (24); for (int t : { 0, 1, 2 }) { r.dc (t, 0.2f); r.engine.strip (t).pan = -1.0f; }
       r.engine.strip (1).solo = true; r.engine.strip (2).solo = true; r.run();
-      check (near (r.L(), 0.4f), "Solo: only soloed tracks (two of three) heard"); }
+      check (approx (r.L(), 0.4f), "Solo: only soloed tracks (two of three) heard"); }
 
     { Rig r (24); r.dc (0, 0.5f); r.engine.strip (0).pan = -1.0f; r.engine.strip (0).solo = true; r.engine.strip (0).mute = true; r.run();
-      check (near (r.L(), 0.0f), "Muted wins over solo"); }
+      check (approx (r.L(), 0.0f), "Muted wins over solo"); }
 
     { Rig r (24); r.dc (0, 0.5f); r.engine.strip (0).pan = -1.0f; r.engine.masterDb = -6.0f; r.run();
-      check (near (r.L(), 0.5f * juce::Decibels::decibelsToGain (-6.0f)), "Master fader"); }
+      check (approx (r.L(), 0.5f * juce::Decibels::decibelsToGain (-6.0f)), "Master fader"); }
 
     { Rig r (24);
       // master returns and LTC from Hawthorne must never reach the mix (that would feed back)
@@ -173,14 +173,14 @@ static void testMix()
       r.engine.strip (0).gainDb = faderMinDb; r.run (1);
       float maxStep = 0.0f;
       for (int k = 1; k < 512; ++k) maxStep = juce::jmax (maxStep, std::abs (r.L (k) - r.L (k - 1)));
-      check (maxStep < 0.002f && near (r.L(), 0.0f, 1.0e-3f), "Fader moves ramp over a block (no clicks)"); }
+      check (maxStep < 0.002f && approx (r.L(), 0.0f, 1.0e-3f), "Fader moves ramp over a block (no clicks)"); }
 
     { Rig r (24); r.dc (0, 1.0f); r.dc (1, 1.0f); r.engine.strip (0).pan = -1.0f; r.engine.strip (1).pan = -1.0f; r.run();
       check (r.engine.masterClipped.load(), "Over 0 dBFS lights CLIP"); }
 
     { Rig r (24); r.dc (2, 0.5f); r.engine.strip (2).gainDb = -6.0f; r.run();
       const float p = MixEngine::takePeak (r.engine.strip (2).peak);
-      check (near (p, 0.5f * juce::Decibels::decibelsToGain (-6.0f)) && r.engine.strip (2).peak.load() == 0.0f,
+      check (approx (p, 0.5f * juce::Decibels::decibelsToGain (-6.0f)) && r.engine.strip (2).peak.load() == 0.0f,
              "Strip meter: post-fader peak, cleared when read"); }
 
     { // 96 tracks, real-ish signals, nothing unusual
@@ -207,8 +207,8 @@ static void testMixFiles()
     auto parsed = juce::parseXML (text);
     MixState::reset (b, nb);
     const bool ok = parsed != nullptr && MixState::fromXml (*parsed, b, nb);
-    check (ok && near (b.strip (4).gainDb.load(), -7.5f) && near (b.strip (4).pan.load(), 0.3f) && b.strip (4).mute.load()
-               && b.strip (40).solo.load() && nb[4] == "Kick" && nb[5] == "6" && near (b.masterDb.load(), -2.0f),
+    check (ok && approx (b.strip (4).gainDb.load(), -7.5f) && approx (b.strip (4).pan.load(), 0.3f) && b.strip (4).mute.load()
+               && b.strip (40).solo.load() && nb[4] == "Kick" && nb[5] == "6" && approx (b.masterDb.load(), -2.0f),
            "Mix file round trip");
     check (x->getNumChildElements() == 2, "Mix file keeps only strips that changed");
 
