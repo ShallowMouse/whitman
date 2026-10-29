@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "DeskPicker.h"
 
 namespace whitman
 {
@@ -28,7 +29,7 @@ MainComponent::MainComponent()
         MixState::fromXml (*mix, engine, names);
     currentFile = juce::File (settings().getValue ("file"));
 
-    for (auto* b : { &audioButton, &openButton, &saveButton, &resetButton, &updateButton })
+    for (auto* b : { &deskButton, &audioButton, &openButton, &saveButton, &resetButton, &updateButton })
     {
         b->setWantsKeyboardFocus (false);
         addAndMakeVisible (b);
@@ -36,7 +37,9 @@ MainComponent::MainComponent()
     audioButton.setTooltip ("Audio device: pick Hawthorne Route (ASIO)");
     openButton.setTooltip ("Open a saved mix");
     saveButton.setTooltip ("Save this mix to a file");
-    resetButton.setTooltip ("Every fader to 0 dB, pans centred, nothing muted or soloed");
+    resetButton.setTooltip ("Every fader to 0 dB, pans centred, EQ flat, no echo, nothing muted or soloed");
+    deskButton.setTooltip ("Pick the desk: the console the tracks are mixed on");
+    deskButton.onClick = [this] { showDeskPicker(); };
     audioButton.onClick = [this] { showAudioSettings(); };
     openButton.onClick  = [this] { openMix(); };
     saveButton.onClick  = [this] { saveMix(); };
@@ -68,9 +71,9 @@ MainComponent::MainComponent()
     viewport.setScrollBarThickness (10);
     addAndMakeVisible (viewport);
 
-    setSize (1300, 780);
+    setSize (1360, 820);
     openAudio();
-    rebuildStrips();
+    applyDesk();
     refreshAll();
     startTimerHz (30);
 }
@@ -177,15 +180,17 @@ void MainComponent::rebuildStrips()
     while (strips.size() < n)
     {
         auto* s = strips.add (new ChannelStrip (engine, strips.size(), names));
+        s->setDesk (engine.getDesk());
         s->onChanged = [this] { mixChanged(); };
         stripHolder.addChildComponent (s);
     }
     for (int i = 0; i < strips.size(); ++i)
         strips[i]->setVisible (i < n);
 
-    stripHolder.setSize (juce::jmax (1, n * ChannelStrip::width), juce::jmax (1, viewport.getMaximumVisibleHeight()));
+    const int w = DeskSkin::of (engine.getDesk()).stripWidth;
+    stripHolder.setSize (juce::jmax (1, n * w), juce::jmax (1, viewport.getMaximumVisibleHeight()));
     for (int i = 0; i < n; ++i)
-        strips[i]->setBounds (i * ChannelStrip::width, 0, ChannelStrip::width, stripHolder.getHeight());
+        strips[i]->setBounds (i * w, 0, w, stripHolder.getHeight());
     repaint();
 }
 
@@ -237,6 +242,34 @@ void MainComponent::timerCallback()
 //==============================================================================
 // Mix files
 
+void MainComponent::applyDesk()
+{
+    const auto d = engine.getDesk();
+    deskButton.setButtonText (juce::String ("DESK: ") + deskInfo (d).badge);
+    for (auto* s : strips) s->setDesk (d);
+    master.setDesk (d);
+    resized();
+    repaint();
+}
+
+void MainComponent::showDeskPicker()
+{
+    juce::DialogWindow::LaunchOptions o;
+    o.content.setOwned (new DeskPicker (engine.getDesk(), [this] (Desk d)
+    {
+        if (d == engine.getDesk()) return;
+        engine.desk = (int) d;      // the engine switches at the start of its next block
+        applyDesk();
+        mixChanged();
+    }));
+    o.dialogTitle = "WHITMAN desk";
+    o.dialogBackgroundColour = Pequod::Colours::bg;
+    o.useNativeTitleBar = true;
+    o.resizable = false;
+    o.componentToCentreAround = this;
+    o.launchAsync();
+}
+
 void MainComponent::showAudioSettings()
 {
     auto* sel = new juce::AudioDeviceSelectorComponent (deviceManager, 0, maxStrips + 3, 2, maxStrips + 2, false, false, false, false);
@@ -267,6 +300,7 @@ void MainComponent::openMix()
             return;
         }
         currentFile = f;
+        applyDesk();
         refreshAll();
         saveSettings();
         repaint();
@@ -297,7 +331,7 @@ void MainComponent::saveMix()
 void MainComponent::resetMix()
 {
     juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Reset the mix?",
-        "Every fader back to 0 dB, pans centred, nothing muted or soloed. Track names are cleared too.", "RESET", "CANCEL", this,
+        "Every fader back to 0 dB, pans centred, EQ flat, no echo, nothing muted or soloed. Track names are cleared too. The desk stays.", "RESET", "CANCEL", this,
         juce::ModalCallbackFunction::create ([this] (int r)
         {
             if (r != 1) return;
@@ -348,6 +382,8 @@ juce::String MainComponent::hintLine() const
 void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (Pequod::Colours::bg);
+    g.setColour (DeskSkin::of (engine.getDesk()).frame);
+    g.fillRect (getLocalBounds().withTrimmedTop (66));
 
     // top bar
     auto bar = getLocalBounds().removeFromTop (64);
@@ -395,6 +431,8 @@ void MainComponent::resized()
         b->setBounds (bar.removeFromRight (76));
         bar.removeFromRight (6);
     }
+    deskButton.setBounds (bar.removeFromRight (140));
+    bar.removeFromRight (6);
     if (updateButton.isVisible())
     {
         updateButton.setBounds (bar.removeFromRight (150));
@@ -403,7 +441,7 @@ void MainComponent::resized()
     statusArea = bar.withTrimmedRight (10).expanded (0, 8);
 
     r.reduce (8, 8);
-    master.setBounds (r.removeFromRight (MasterStrip::width));
+    master.setBounds (r.removeFromRight (DeskSkin::of (engine.getDesk()).masterWidth));
     r.removeFromRight (8);
     viewport.setBounds (r);
     rebuildStrips();

@@ -15,6 +15,20 @@ WHITMAN talks to Hawthorne through **Hawthorne Route**, the ASIO driver Hawthorn
 
 The top bar tells you what WHITMAN sees: `HAWTHORNE ROUTE · 24 TRACKS · 48.0 kHz` when it's all connected, or what's missing.
 
+## Desks
+
+**DESK** picks the console the tracks are mixed on. Like Hawthorne's machines, each desk has its own face and its own sound, and the choice is saved with the mix.
+
+* **EMI REDD.51**: the valve desk in Abbey Road's Studio Two from 1964 to 1968, the one the Studer J37s were fed from (Revolver, Sgt. Pepper). Per channel:
+  * **GAIN** into a valve channel amplifier, in 2 dB steps. Around 0 it's clean; push it and the valves thicken and grit up. Bring the fader down to match.
+  * **TREBLE** ±10 dB with the **POP** module (lift: a bell around 5 kHz; cut: a shelf at 10 kHz) or the **CLAS**sic module (a 10 kHz shelf both ways), and **BASS** ±10 dB at 100 Hz, both switched in 2 dB steps.
+  * **ECHO**: a send, after the fader, to an echo chamber; **ECHO RETURN** on the master brings it back.
+  * **PAN**, and a Painton quadrant fader.
+  The mix goes through valve main amplifiers, which round off before full scale (so it can't clip Hawthorne), and is read on a pair of VU meters.
+* **WHITMAN (clean)**: the plain console below, with nothing added.
+
+The REDD.51 here is modelled from published descriptions of the desk, not measured from one. The echo chamber is a general chamber-like reverb, not a model of Studio Two's.
+
 ## The console
 
 Each strip, top to bottom:
@@ -24,9 +38,9 @@ Each strip, top to bottom:
 * **M / S**: mute and solo. Several tracks can be soloed; mute wins over solo. A strip you can't hear is dimmed.
 * **Fader**: −∞ to +10 dB. Double-click for 0 dB. The meter beside it is the track after its fader.
 
-**MASTER** is the level of the mix sent to Hawthorne, with a stereo meter. **CLIP** lights if the mix goes over 0 dBFS; click it to clear.
+**MASTER** is the level of the mix sent to Hawthorne, with a stereo meter. **CLIP** lights if the mix goes over 0 dBFS; click it to clear. (The REDD.51's main amps can't clip, so it has no CLIP lamp.)
 
-The mix is kept between runs automatically. **SAVE** / **OPEN** keep mixes as `.whitman` files; **RESET** puts every fader to 0 dB and every pan in the middle.
+The mix is kept between runs automatically. **SAVE** / **OPEN** keep mixes as `.whitman` files; **RESET** puts every fader to 0 dB, every pan in the middle and the EQ flat, and turns the echo off. It keeps the desk.
 
 ## Other audio devices
 

@@ -43,7 +43,7 @@ private:
     double deviceRate = 0.0;
 
     // top bar
-    juce::TextButton audioButton { "AUDIO" }, openButton { "OPEN" }, saveButton { "SAVE" },
+    juce::TextButton deskButton { "DESK" }, audioButton { "AUDIO" }, openButton { "OPEN" }, saveButton { "SAVE" },
                      resetButton { "RESET" }, updateButton { "UPDATE" };
     juce::Rectangle<int> statusArea;
 
@@ -76,6 +76,8 @@ private:
     void mixChanged();
     void saveSettings();
 
+    void applyDesk();            // the strips and master follow the engine's desk
+    void showDeskPicker();
     void showAudioSettings();
     void openMix();
     void saveMix();

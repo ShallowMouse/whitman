@@ -16,7 +16,7 @@ struct MixState
     /** Returns false (and changes nothing) if the XML isn't a WHITMAN mix. */
     static bool fromXml (const juce::XmlElement& x, MixEngine& e, juce::StringArray& names);
 
-    /** Everything back to unity, centre, nothing muted or soloed. */
+    /** Everything back to unity, centre, EQ flat, no echo, nothing muted or soloed (the desk stays). */
     static void reset (MixEngine& e, juce::StringArray& names);
 
     static juce::String defaultName (int strip) { return juce::String (strip + 1); }

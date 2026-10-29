@@ -1,6 +1,7 @@
 // Headless tests for WHITMAN's engine. Prints PASS / FAIL per check; exit code 1 if anything failed.
 
 #include <juce_core/juce_core.h>
+#include <functional>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "../Source/MixEngine.h"
 #include "../Source/MixState.h"
@@ -193,6 +194,166 @@ static void testMix()
       check (finite && r.out.getMagnitude (96, 0, 256) > 0.0f, "96 tracks mix cleanly"); }
 }
 
+
+//==============================================================================
+// The REDD.51 model
+static float sineGainDb (Desk d, float freq, std::function<void (MixEngine&)> setup, float levelDbfs = nominalDbfs)
+{
+    Rig r (8, 512);
+    r.engine.desk = (int) d;
+    r.engine.strip (0).pan = -1.0f;
+    if (setup) setup (r.engine);
+    const double sr = 48000.0;
+    const float amp = juce::Decibels::decibelsToGain (levelDbfs);
+    double phase = 0.0, sumIn = 0.0, sumOut = 0.0;
+    const int blocks = 120;   // ~1.3 s
+    for (int b = 0; b < blocks; ++b)
+    {
+        for (int k = 0; k < 512; ++k)
+        {
+            r.in.setSample (0, k, amp * (float) std::sin (phase));
+            phase += juce::MathConstants<double>::twoPi * freq / sr;
+        }
+        r.run (1);
+        if (b >= blocks / 2)
+            for (int k = 0; k < 512; ++k)
+            {
+                sumIn  += (double) r.in.getSample (0, k) * r.in.getSample (0, k);
+                sumOut += (double) r.L (k) * r.L (k);
+            }
+    }
+    return (float) (10.0 * std::log10 (sumOut / sumIn));
+}
+
+/** Level of harmonic h relative to the fundamental (dB), via Goertzel on the left output. */
+static float harmonicDb (float inputDb, int h, float levelDbfs = nominalDbfs)
+{
+    Rig r (8, 480);
+    r.engine.desk = (int) Desk::redd51;
+    r.engine.strip (0).pan = -1.0f;
+    r.engine.strip (0).inputDb = inputDb;
+    r.engine.strip (0).gainDb = -inputDb;      // fader back down, so the main amps stay clean
+    const double sr = 48000.0, f = 1000.0;
+    const float amp = juce::Decibels::decibelsToGain (levelDbfs);
+    std::vector<float> out;
+    double phase = 0.0;
+    for (int b = 0; b < 200; ++b)
+    {
+        for (int k = 0; k < 480; ++k) { r.in.setSample (0, k, amp * (float) std::sin (phase)); phase += juce::MathConstants<double>::twoPi * f / sr; }
+        r.run (1);
+        if (b >= 100) for (int k = 0; k < 480; ++k) out.push_back (r.L (k));
+    }
+    auto goertzel = [&] (double freq)
+    {
+        const double w = juce::MathConstants<double>::twoPi * freq / sr, c = 2.0 * std::cos (w);
+        double s1 = 0, s2 = 0;
+        for (auto v : out) { const double s0 = v + c * s1 - s2; s2 = s1; s1 = s0; }
+        return std::sqrt (s1 * s1 + s2 * s2 - c * s1 * s2);
+    };
+    return (float) (20.0 * std::log10 (goertzel (f * h) / goertzel (f) + 1.0e-12));
+}
+
+static void testRedd()
+{
+    const auto R = Desk::redd51;
+    auto none = [] (MixEngine&) {};
+
+    { const float g = sineGainDb (R, 1000.0f, none);
+      check (std::abs (g) < 0.5f, "REDD.51 flat at 1 kHz at 0 VU: " + juce::String (g, 2) + " dB"); }
+
+    { const float lo = sineGainDb (R, 30.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; });
+      const float mid = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; });
+      check (lo > 8.5f && lo < 10.8f && std::abs (mid) < 1.0f,
+             "BASS +10: " + juce::String (lo, 1) + " dB at 30 Hz, " + juce::String (mid, 1) + " at 1 kHz"); }
+
+    { const float lo = sineGainDb (R, 30.0f, [] (MixEngine& e) { e.strip (0).bassDb = -10.0f; });
+      check (lo < -8.5f && lo > -10.8f, "BASS -10: " + juce::String (lo, 1) + " dB at 30 Hz"); }
+
+    { const float pk = sineGainDb (R, 5000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
+      const float mid = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
+      const float top = sineGainDb (R, 15000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
+      check (pk > 8.5f && pk < 10.5f && mid < 3.0f && top < pk - 3.0f,
+             "Pop TREBLE +10: a bell at 5 kHz (" + juce::String (pk, 1) + " dB; 1 kHz " + juce::String (mid, 1)
+             + ", 15 kHz " + juce::String (top, 1) + ")"); }
+
+    { const float top = sineGainDb (R, 15000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = -10.0f; });
+      const float mid = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = -10.0f; });
+      check (top < -6.5f && mid > -1.0f, "Pop TREBLE -10: a shelf down at 10 kHz (" + juce::String (top, 1) + " dB at 15 kHz)"); }
+
+    { const float top = sineGainDb (R, 15000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; e.strip (0).classic = true; });
+      const float five = sineGainDb (R, 5000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; e.strip (0).classic = true; });
+      check (top > 6.5f && five < top, "Classic TREBLE +10: a shelf up at 10 kHz (" + juce::String (top, 1) + " dB at 15 kHz, "
+             + juce::String (five, 1) + " at 5 kHz)"); }
+
+    { const float g = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).inputDb = 10.0f; e.strip (0).gainDb = -10.0f; });
+      check (std::abs (g) < 0.8f, "GAIN +10 with the fader 10 down: about the same level (" + juce::String (g, 2) + " dB)"); }
+
+    { const float clean2 = harmonicDb (0.0f, 2), hot2 = harmonicDb (18.0f, 2), hot3 = harmonicDb (18.0f, 3);
+      check (clean2 < -45.0f, "At 0 VU the channel amp is clean (2nd harmonic " + juce::String (clean2, 1) + " dB)");
+      check (hot2 > -40.0f && hot2 > clean2 + 15.0f, "GAIN +18 drives the valves (2nd harmonic " + juce::String (hot2, 1) + " dB)");
+      check (hot2 > hot3 - 6.0f, "Valve grit has a strong 2nd harmonic, close to the 3rd (2nd " + juce::String (hot2, 1) + ", 3rd " + juce::String (hot3, 1) + ")"); }
+
+    { // main amps: the mix can't go over full scale, however hard it's pushed
+      Rig r (8, 512);
+      r.engine.desk = (int) R;
+      for (int t = 0; t < 8; ++t) { r.dc (t, 0.0f); r.engine.strip (t).gainDb = 10.0f; r.engine.strip (t).pan = -1.0f; }
+      double ph = 0.0;
+      float most = 0.0f;
+      for (int b = 0; b < 40; ++b)
+      {
+          for (int k = 0; k < 512; ++k) { const float v = 0.9f * (float) std::sin (ph); ph += 0.05; for (int t = 0; t < 8; ++t) r.in.setSample (t, k, v); }
+          r.run (1);
+          most = juce::jmax (most, r.out.getMagnitude (8, 0, 512));
+      }
+      check (most <= 1.0f && most > 0.8f, "Main amps top out at full scale (peak " + juce::String (most, 3) + ")"); }
+
+    { // echo: a burst, then a tail from the chamber; none without the send, none on the clean desk
+      auto tailDb = [] (Desk d, float sendDb)
+      {
+          Rig r (8, 480);
+          r.engine.desk = (int) d;
+          r.engine.strip (0).pan = -1.0f;
+          r.engine.strip (0).echoDb = sendDb;
+          r.engine.echoReturnDb = 0.0f;
+          double ph = 0.0;
+          for (int b = 0; b < 20; ++b)   // 0.2 s of tone
+          {
+              for (int k = 0; k < 480; ++k) { r.in.setSample (0, k, 0.25f * (float) std::sin (ph)); ph += 0.13; }
+              r.run (1);
+          }
+          r.in.clear();
+          r.run (30);                    // 0.3 s later
+          double e = 0.0;
+          for (int b = 0; b < 10; ++b) { r.run (1); for (int k = 0; k < 480; ++k) e += (double) r.L (k) * r.L (k) + r.R (k) * r.R (k); }
+          return (float) (10.0 * std::log10 (e / 4800.0 + 1.0e-20));
+      };
+      const float wet = tailDb (R, 0.0f), dry = tailDb (R, echoMinDb), clean = tailDb (Desk::whitman, 0.0f);
+      check (wet > -45.0f && dry < -120.0f && clean < -120.0f,
+             "ECHO: a chamber tail with the send up (" + juce::String (wet, 1) + " dB), none without it or on the clean desk"); }
+
+    { // switching desks while running: nothing odd
+      Rig r (24); r.dc (0, 0.3f); r.engine.strip (0).bassDb = 6.0f; r.engine.strip (0).echoDb = -10.0f;
+      bool finite = true;
+      for (int i = 0; i < 6; ++i)
+      {
+          r.engine.desk = i % 2;
+          r.run (2);
+          for (int k = 0; k < r.out.getNumSamples(); ++k) finite = finite && std::isfinite (r.L (k)) && std::isfinite (r.R (k));
+      }
+      check (finite, "Switching desks while playing stays clean"); }
+
+    { MixEngine a, b; juce::StringArray na, nb;
+      MixState::reset (a, na);
+      a.desk = (int) R; a.strip (2).inputDb = 8.0f; a.strip (2).bassDb = -4.0f; a.strip (2).trebleDb = 6.0f;
+      a.strip (2).classic = true; a.strip (2).echoDb = -12.0f; a.echoReturnDb = -3.0f;
+      auto x = juce::parseXML (MixState::toXml (a, na)->toString());
+      const bool ok = x != nullptr && MixState::fromXml (*x, b, nb);
+      check (ok && b.getDesk() == R && approx (b.strip (2).inputDb.load(), 8.0f) && approx (b.strip (2).bassDb.load(), -4.0f)
+               && approx (b.strip (2).trebleDb.load(), 6.0f) && b.strip (2).classic.load() && approx (b.strip (2).echoDb.load(), -12.0f)
+               && approx (b.echoReturnDb.load(), -3.0f),
+             "Mix file keeps the desk, GAIN, EQ and ECHO"); }
+}
+
 //==============================================================================
 static void testMixFiles()
 {
@@ -249,6 +410,7 @@ int main()
 {
     testRouting();
     testMix();
+    testRedd();
     testMixFiles();
     testRouteStatus();
     std::printf ("\n%d checks, %d failed\n", checks, failures);

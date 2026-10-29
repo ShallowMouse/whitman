@@ -36,7 +36,7 @@ public:
             setUsingNativeTitleBar (true);
             setContentOwned (new whitman::MainComponent(), true);
             setResizable (true, true);
-            setResizeLimits (900, 560, 8000, 6000);
+            setResizeLimits (960, 720, 8000, 6000);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
