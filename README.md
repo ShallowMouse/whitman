@@ -21,22 +21,25 @@ With Hawthorne 1.24 or later, WHITMAN also gets each track's **name** from Hawth
 
 **DESK** picks the console the tracks are mixed on. Like Hawthorne's machines, each desk has its own face and its own sound, and the choice is saved with the mix.
 
-* **EMI REDD.51**: the valve desk in Abbey Road's Studio Two from 1964 to 1968, the one the Studer J37s were fed from (Revolver, Sgt. Pepper). Per channel:
-  * **GAIN** into a valve channel amplifier, in 2 dB steps. Around 0 it's clean; push it and the valves thicken and grit up. Bring the fader down to match.
-  * **TREBLE** ±10 dB with the **POP** module (lift: a bell around 5 kHz; cut: a shelf at 10 kHz) or the **CLAS**sic module (a 10 kHz shelf both ways), and **BASS** ±10 dB at 100 Hz, both switched in 2 dB steps.
+* **EMI REDD.37** (Studio Two, 1958 to 1964: the early Beatles records): valve, with Siemens V72 channel amps.
+* **EMI REDD.51** (Studio Two, 1964 to 1968: Revolver, Sgt. Pepper; fed the Studer J37s): valve, with REDD.47 channel amps (more headroom, less distortion than the V72s).
+  Both REDDs, per channel:
+  * **GAIN** into the valve channel amp. Around 0 it's clean; push it and the valves thicken and grit up. Bring the fader down to match. *(Not a control on the real desks: it stands in for how hard the signal hit the amps.)*
+  * **TREBLE** ±10 dB with the **POP** module (lift: a bell around 5 kHz; cut: a shelf at 10 kHz) or the **CLAS**sic module (a 10 kHz shelf both ways), and **BASS** ±10 dB, a 100 Hz shelf.
   * **ECHO**: a send, after the fader, to an echo chamber; **ECHO RETURN** on the master brings it back.
-  * **PAN**, and a Painton quadrant fader.
-  The mix goes through valve main amplifiers, which round off before full scale (so it can't clip Hawthorne), and is read on a pair of VU meters.
-* **EMI REDD.37**: the REDD.51's predecessor (Studio Two, 1958 to 1964: the early Beatles records), with Siemens V72 channel amps. The same controls as the REDD.51, but the valves run out of headroom sooner, so GAIN gets gritty quicker, and the top is darker.
-* **EMI TG12345**: EMI's solid-state desk, in Studio Two from November 1968 (*Abbey Road*; the Mk IV made *The Dark Side of the Moon*). Per channel:
-  * **GAIN** into a transistor channel amp: it gets edgier, not fatter, when pushed.
-  * **TREBLE** ±10 dB around 10 kHz, **PRES**ence ±10 dB at one of eight frequencies (500 Hz to 10 kHz, on the small switch), **BASS** ±10 dB at 50 Hz. (The original desks had presence only on the groups and mains at first; it was added to the channels later.)
+  * **PAN**, and a Painton quadrant fader (the lever swings on an arc under the panel; from above it's a straight slot).
+  The REDD.51 also has the **SPREADER** on the master, for the stereo width. Both mix through valve main amps, which round off before full scale, and are read on VU meters.
+* **EMI TG12345 Mk I** (Studio Two from November 1968: *Abbey Road*, *All Things Must Pass*) and **Mk IV** (1971 to 1983: *The Dark Side of the Moon*): EMI's solid-state desks, with a VU meter on every channel. Per channel:
+  * **GAIN** into a transistor channel amp: it gets edgier, not fatter, when pushed. *(Again, not a control on the real desk.)*
+  * EQ: **BASS** ±10 dB, a 50 Hz shelf, plus
+    * on the **Mk I**, **TREBLE** ±10 dB (lift: a bell at 5 kHz; cut: a 10 kHz shelf). Its presence band was only on the groups and mains;
+    * on the **Mk IV**, **PRES**ence ±10 dB instead of treble: a bell at 500, 800, 1.2k, 1.8k, 2.8k, 4.2k or 6.8k, or a 10 kHz shelf (the small switch).
   * **COMP**: the channel compressor. The button picks **OFF**, **COMP** (2:1) or **LIMIT** (8:1); the knob sets how hard it's driven (with some make-up gain), the small switch the recovery (0.1 to 5 s), and the figure above shows the gain reduction.
   * **ECHO** and **PAN**, and straight faders.
-  On the master, **SPREAD** sets the width of the mix: all the way left is mono, the middle is as panned, further right is wider.
+  On the master: **PRESENCE** on the mains, and **SPREAD** for the stereo width (all the way left is mono, the middle as panned, further right wider).
 * **WHITMAN (clean)**: the plain console below, with nothing added.
 
-The EMI desks here are modelled from published descriptions, not measured from the real ones. The echo chamber is a general chamber-like reverb, not a model of Studio Two's.
+The EMI desks are modelled from published descriptions (Abbey Road, MusicTech's Studio Icons, the Waves/Abbey Road plug-in guides, Chandler's licensed TG and REDD hardware), not measured from the real ones. Where sources disagree, the choice is noted in `Source/Desk.h`. Not modelled: the real desks' channel counts (8 on the REDDs, 24 on the TGs; WHITMAN gives you one strip per tape track), their groups and multiple echo sends (one chamber here, a general chamber-like reverb rather than Studio Two's), and noise and hum.
 
 ## The console
 

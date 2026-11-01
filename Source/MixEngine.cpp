@@ -117,6 +117,8 @@ void MixEngine::deskChanged (Desk d)
     echoHp = echoHpIn = echoLp = 0.0f;
     echoRetCur = 0.0f;
     spreadCur = info.hasSpread ? spread.load() : 1.0f;
+    mainPresence[0].reset(); mainPresence[1].reset();
+    setMainPres = 1000.0f; setMainPresFreq = -1;
 }
 
 void MixEngine::updateTgEq (Strip& s, float bassDb, float trebleDb, float presDb, int presFreq) noexcept
@@ -129,17 +131,31 @@ void MixEngine::updateTgEq (Strip& s, float bassDb, float trebleDb, float presDb
     if (trebleDb != s.setTreble)
     {
         s.setTreble = trebleDb;
-        // a broad lift / cut centred on 10 kHz
-        s.treble.setCoefficients (juce::IIRCoefficients::makePeakFilter (sampleRate, juce::jmin (10000.0, sampleRate * 0.42), 0.5,
-                                                                         juce::Decibels::decibelsToGain (trebleDb)));
+        s.treble.setCoefficients (trebleCoefs (trebleDb, false));    // Mk I: lift a bell at 5 kHz, cut a 10 kHz shelf
     }
     if (presDb != s.setPresence || presFreq != s.setPresFreq)
     {
         s.setPresence = presDb;
         s.setPresFreq = presFreq;
-        s.presence.setCoefficients (juce::IIRCoefficients::makePeakFilter (sampleRate, juce::jmin ((double) presenceHz (presFreq), sampleRate * 0.42), 1.0,
-                                                                           juce::Decibels::decibelsToGain (presDb)));
+        s.presence.setCoefficients (presenceCoefs (presDb, presFreq));
     }
+}
+
+juce::IIRCoefficients MixEngine::trebleCoefs (float db, bool classic) const noexcept
+{
+    const double g = juce::Decibels::decibelsToGain (db);
+    const double hf = juce::jmin (10000.0, sampleRate * 0.45);
+    return ! classic && db > 0.0f ? juce::IIRCoefficients::makePeakFilter (sampleRate, 5000.0, 0.8, g)
+                                  : juce::IIRCoefficients::makeHighShelf (sampleRate, hf, 0.6, g);
+}
+
+juce::IIRCoefficients MixEngine::presenceCoefs (float db, int freq) const noexcept
+{
+    const double g = juce::Decibels::decibelsToGain (db);
+    const double hz = juce::jmin ((double) presenceHz (freq), sampleRate * 0.42);
+    // positions 1-7 are bells; the last is a 10 kHz shelf
+    return presenceIsShelf (freq) ? juce::IIRCoefficients::makeHighShelf (sampleRate, hz, 0.6, g)
+                                  : juce::IIRCoefficients::makePeakFilter (sampleRate, hz, 1.0, g);
 }
 
 void MixEngine::compress (Strip& s, float* x, int n) noexcept
@@ -181,12 +197,8 @@ void MixEngine::updateEq (Strip& s, float bassDb, float trebleDb, bool classic) 
     {
         s.setTreble = trebleDb;
         s.setClassic = classic;
-        const double g = juce::Decibels::decibelsToGain (trebleDb);
-        const double hf = juce::jmin (10000.0, sampleRate * 0.45);
         // Pop module: the lift is a bell around 5 kHz, the cut a shelf at 10 kHz. Classic: a 10 kHz shelf both ways.
-        s.treble.setCoefficients (! classic && trebleDb > 0.0f
-                                      ? juce::IIRCoefficients::makePeakFilter (sampleRate, 5000.0, 0.8, g)
-                                      : juce::IIRCoefficients::makeHighShelf (sampleRate, hf, 0.6, g));
+        s.treble.setCoefficients (trebleCoefs (trebleDb, classic));
     }
 }
 
@@ -265,13 +277,16 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
                 if (b != 0.0f) s.bass.processSamples (tmp, n);
                 if (t != 0.0f) s.treble.processSamples (tmp, n);
             }
-            else if (info.eq == EqStyle::tg)
+            else if (info.eq == EqStyle::tgMk1 || info.eq == EqStyle::tgMk4)
             {
-                const float pr = s.presenceDb.load (std::memory_order_relaxed);
-                updateTgEq (s, b, t, pr, s.presenceFreq.load (std::memory_order_relaxed));
+                // the Mk I has treble on its channels, the Mk II on presence instead
+                const bool mk4 = info.eq == EqStyle::tgMk4;
+                const float pr = mk4 ? s.presenceDb.load (std::memory_order_relaxed) : 0.0f;
+                const float tr = mk4 ? 0.0f : t;
+                updateTgEq (s, b, tr, pr, s.presenceFreq.load (std::memory_order_relaxed));
                 if (b != 0.0f)  s.bass.processSamples (tmp, n);
                 if (pr != 0.0f) s.presence.processSamples (tmp, n);
-                if (t != 0.0f)  s.treble.processSamples (tmp, n);
+                if (tr != 0.0f) s.treble.processSamples (tmp, n);
             }
             if (info.hasComp)
                 compress (s, tmp, n);
@@ -338,7 +353,26 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
         echoRetCur = rt;
     }
 
-    // --- SPREAD (TG): the mix's width, by turning its side (L - R) up or down
+    // --- presence on the main outputs (the TG's main cassettes)
+    if (info.hasMainPresence)
+    {
+        const float pd = mainPresenceDb.load (std::memory_order_relaxed);
+        const int pf = mainPresenceFreq.load (std::memory_order_relaxed);
+        if (pd != setMainPres || pf != setMainPresFreq)
+        {
+            setMainPres = pd; setMainPresFreq = pf;
+            const auto c = presenceCoefs (pd, pf);
+            mainPresence[0].setCoefficients (c);
+            mainPresence[1].setCoefficients (c);
+        }
+        if (pd != 0.0f)
+        {
+            mainPresence[0].processSamples (mixL, n);
+            mainPresence[1].processSamples (mixR, n);
+        }
+    }
+
+    // --- SPREAD (REDD.51's Spreader, TG): the mix's width, by turning its side (L - R) up or down
     if (info.hasSpread)
     {
         const float st = juce::jlimit (0.0f, 2.0f, spread.load (std::memory_order_relaxed));

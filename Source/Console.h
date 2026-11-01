@@ -116,6 +116,7 @@ private:
     juce::Label nameLabel;
     DeskKnob input, treble, bass, echo, pan;
     DeskKnob presence, presenceFreq, comp, recovery;     // TG12345
+    VUMeter chanVu { {} };                               // TG: a VU on every channel
     juce::TextButton trebleMode { "POP" }, compMode { "OFF" };
     float shownGr = 0.0f;
     juce::TextButton mute { "M" }, solo { "S" };
@@ -154,7 +155,7 @@ private:
     Fader fader;
     Meter meter { 2 };
     VUMeter vuL { "LEFT" }, vuR { "RIGHT" };
-    DeskKnob echoReturn, spread;
+    DeskKnob echoReturn, spread, mainPresence, mainPresenceFreq;
     juce::Label dbLabel;
     bool clipped = false;
     juce::Rectangle<int> lampArea;

@@ -11,6 +11,8 @@ std::unique_ptr<juce::XmlElement> MixState::toXml (const MixEngine& e, const juc
     x->setAttribute ("desk", e.desk.load());
     x->setAttribute ("echoReturn", (double) e.echoReturnDb.load());
     x->setAttribute ("spread", (double) e.spread.load());
+    x->setAttribute ("mainPresence", (double) e.mainPresenceDb.load());
+    x->setAttribute ("mainPresenceFreq", e.mainPresenceFreq.load());
     for (int i = 0; i < maxStrips; ++i)
     {
         auto& s = e.strip (i);
@@ -68,6 +70,8 @@ void MixState::reset (MixEngine& e, juce::StringArray& names)
     e.masterDb = 0.0f;
     e.echoReturnDb = -6.0f;
     e.spread = 1.0f;
+    e.mainPresenceDb = 0.0f;
+    e.mainPresenceFreq = 4;
 }
 
 bool MixState::fromXml (const juce::XmlElement& x, MixEngine& e, juce::StringArray& names)
@@ -78,6 +82,8 @@ bool MixState::fromXml (const juce::XmlElement& x, MixEngine& e, juce::StringArr
     e.desk = (int) deskFromInt (x.getIntAttribute ("desk", (int) Desk::whitman));
     e.echoReturnDb = (float) juce::jlimit ((double) echoMinDb, 10.0, x.getDoubleAttribute ("echoReturn", -6.0));
     e.spread = (float) juce::jlimit (0.0, 2.0, x.getDoubleAttribute ("spread", 1.0));
+    e.mainPresenceDb = (float) juce::jlimit (-10.0, 10.0, x.getDoubleAttribute ("mainPresence", 0.0));
+    e.mainPresenceFreq = juce::jlimit (0, numPresenceFreqs - 1, x.getIntAttribute ("mainPresenceFreq", 4));
     for (auto* c : x.getChildWithTagNameIterator ("STRIP"))
     {
         const int i = c->getIntAttribute ("index", -1);

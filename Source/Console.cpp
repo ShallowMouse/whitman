@@ -20,7 +20,11 @@ const DeskSkin& DeskSkin::of (Desk d)
         { C (0xff262622), C (0xff74776a), C (0xff606355), C (0xff3a3c34),
           C (0xfff2ecda), C (0xffd4cfba), C (0xfff2d9a0), C (0xff1c1c19),
           true, true, true, 94, 236 },
-        // TG12345: pale grey modules, black legends, black knobs, straight faders, VUs
+        // TG12345 Mk I: pale grey modules, black legends, black knobs, straight faders, VUs
+        { C (0xff1f2224), C (0xffaeb3b6), C (0xff989da1), C (0xff5c6266),
+          C (0xff15181a), C (0xff3a4044), C (0xffd8492e), C (0xff15181a),
+          true, false, true, 104, 236 },
+        // TG12345 Mk IV: the same
         { C (0xff1f2224), C (0xffaeb3b6), C (0xff989da1), C (0xff5c6266),
           C (0xff15181a), C (0xff3a4044), C (0xffd8492e), C (0xff15181a),
           true, false, true, 104, 236 },
@@ -159,7 +163,9 @@ void VUMeter::paint (juce::Graphics& g)
         const float a = angleOf (vu);
         g.setColour (vu > 0.0f ? juce::Colour (0xffb8261b) : juce::Colour (0xff1b1a16));
         g.drawLine (juce::Line<float> (onArc (a, radius), onArc (a, radius + 5.0f)), 1.2f);
-        if (vu == -20.0f || vu == -10.0f || vu == -5.0f || vu == -3.0f || vu == 0.0f || vu == 3.0f)
+        const bool small = getWidth() < 130;    // a channel's meter: fewer numbers, or they run together
+        if (small ? (vu == -10.0f || vu == 0.0f || vu == 3.0f)
+                  : (vu == -20.0f || vu == -10.0f || vu == -5.0f || vu == -3.0f || vu == 0.0f || vu == 3.0f))
         {
             const auto p = onArc (a, radius + 12.0f);
             g.drawText (juce::String ((int) std::abs (vu)), juce::Rectangle<float> (18.0f, 10.0f).withCentre (p), juce::Justification::centred);
@@ -255,69 +261,50 @@ void Fader::paintStraight (juce::Graphics& g)
 
 void Fader::paintQuadrant (juce::Graphics& g)
 {
-    // A Painton quadrant fader: a lever on a pivot behind the panel, its knob travelling
-    // along a curved slot in a chrome plate. Up is louder.
+    // A Painton quadrant fader: the lever swings on an arc under the panel, but from above you
+    // see a straight slot in a chrome plate, with the lever's black knob riding along it.
+    // Up is louder.
     const auto& s = *skin;
     auto r = getLocalBounds().toFloat();
-    const float knobH = 26.0f, inset = knobH * 0.5f + 4.0f;
+    const float knobH = 22.0f, inset = knobH * 0.5f + 6.0f;
     const float top = r.getY() + inset, bottom = r.getBottom() - inset;
     const float len = bottom - top;
-    const float radius = len * 3.2f;
-    const float half = len * 0.5f + 6.0f;
-    const float xEnds = r.getRight() - 12.0f;            // the slot's ends; its middle bows to the left
-    const juce::Point<float> pivot (xEnds + std::sqrt (radius * radius - half * half), (top + bottom) * 0.5f);
-    auto pointAt = [&] (float y)
-    {
-        const float dy = y - pivot.y;
-        return juce::Point<float> (pivot.x - std::sqrt (juce::jmax (0.0f, radius * radius - dy * dy)), y);
-    };
+    const float x = r.getRight() - 16.0f;
     auto yOf = [&] (double db) { return (float) (bottom - len * valueToProportionOfLength (db)); };
 
-    // chrome plate with the curved slot
-    juce::Path slot;
-    for (int i = 0; i <= 40; ++i)
-    {
-        const auto p = pointAt (top - 6.0f + (len + 12.0f) * (float) i / 40.0f);
-        if (i == 0) slot.startNewSubPath (p); else slot.lineTo (p);
-    }
-    g.setColour (juce::Colour (0xffb9bcb7));
-    g.strokePath (slot, juce::PathStrokeType (16.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    g.setColour (juce::Colour (0xff8e918c));
-    g.strokePath (slot, juce::PathStrokeType (15.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // chrome plate, the slot down its middle
+    auto plate = juce::Rectangle<float> (18.0f, len + 26.0f).withCentre ({ x, (top + bottom) * 0.5f });
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xffd4d7d2), plate.getX(), plate.getY(),
+                                             juce::Colour (0xff8e918c), plate.getRight(), plate.getY(), false));
+    g.fillRoundedRectangle (plate, 3.0f);
+    g.setColour (juce::Colour (0xff5d605b));
+    g.drawRoundedRectangle (plate, 3.0f, 0.8f);
+    for (float y : { plate.getY() + 5.0f, plate.getBottom() - 5.0f })
+        Pequod::drawScrew (g, { x, y }, 2.4f);
     g.setColour (juce::Colour (0xff0d0e0d));
-    g.strokePath (slot, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.fillRoundedRectangle (juce::Rectangle<float> (4.0f, len + 4.0f).withCentre ({ x, (top + bottom) * 0.5f }), 2.0f);
 
-    // engraved scale, left of the slot
+    // engraved scale, left of the plate
     g.setFont (Pequod::heading (9.5f, false));
     for (double db : { 10.0, 5.0, 0.0, -5.0, -10.0, -20.0, -30.0, -40.0, -60.0 })
     {
         const float y = yOf (db);
-        const auto p = pointAt (y);
         const bool unity = db == 0.0;
         g.setColour (unity ? s.accent : s.engravingDim);
-        g.drawLine (p.x - 16.0f, y, p.x - 10.0f, y, unity ? 1.6f : 1.0f);
+        g.drawLine (plate.getX() - 9.0f, y, plate.getX() - 3.0f, y, unity ? 1.6f : 1.0f);
         g.drawText (db <= faderMinDb ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x9e")) : (db > 0.0 ? "+" : "") + juce::String ((int) std::abs (db)),
-                    juce::Rectangle<float> (p.x - 40.0f, y - 6.0f, 23.0f, 12.0f), juce::Justification::centredRight, false);
+                    juce::Rectangle<float> (plate.getX() - 36.0f, y - 6.0f, 25.0f, 12.0f), juce::Justification::centredRight, false);
     }
 
-    // the lever's knob, tilted along the radius
+    // the lever's knob: black, rounded, with a white line across it
     const float y = yOf (getValue());
-    const auto p = pointAt (y);
-    const float tilt = std::asin (juce::jlimit (-1.0f, 1.0f, (y - pivot.y) / radius));
-    const auto t = juce::AffineTransform::rotation (tilt).translated (p);
-    juce::Path stem;
-    stem.addRectangle (-2.0f, -3.0f, 18.0f, 6.0f);
-    g.setColour (juce::Colour (0xffcfd2cd));
-    g.fillPath (stem, t);
-    juce::Path knob;
-    knob.addRoundedRectangle (-26.0f, -knobH * 0.5f, 30.0f, knobH, 5.0f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3a3a3a), p.x, p.y - knobH * 0.5f,
-                                             juce::Colour (0xff0b0b0b), p.x, p.y + knobH * 0.5f, false));
-    g.fillPath (knob, t);
-    juce::Path line;
-    line.addRectangle (-24.0f, -1.0f, 26.0f, 2.0f);
+    auto knob = juce::Rectangle<float> (26.0f, knobH).withCentre ({ x, y });
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRoundedRectangle (knob.translated (1.5f, 2.5f), 6.0f);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3d3d3d), x, knob.getY(), juce::Colour (0xff0a0a0a), x, knob.getBottom(), false));
+    g.fillRoundedRectangle (knob, 6.0f);
     g.setColour (getValue() <= faderMinDb + 0.05 ? juce::Colour (0xff6a6a6a) : juce::Colour (0xfff2eee0));
-    g.fillPath (line, t);
+    g.fillRect (knob.getX() + 4.0f, y - 1.0f, knob.getWidth() - 8.0f, 2.0f);
 }
 
 //==============================================================================
@@ -385,6 +372,13 @@ static juce::String signedDb (double v)
     return i == 0 ? juce::String ("0") : (i > 0 ? "+" : "") + juce::String (i);
 }
 
+static juce::String presenceLabel (int i)
+{
+    if (presenceIsShelf (i)) return "10k SHELF";
+    const float hz = presenceHz (i);
+    return hz >= 1000.0f ? juce::String (hz / 1000.0f, std::fmod (hz, 1000.0f) != 0.0f ? 1 : 0) + "k" : juce::String ((int) hz);
+}
+
 static juce::String sendText (double v)
 {
     return v <= echoMinDb + 0.05 ? juce::String ("OFF") : signedDb (v);
@@ -407,17 +401,17 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     addAndMakeVisible (nameLabel);
 
     // GAIN: the channel amp's input, switched in 2 dB steps
-    input.setRange (-10.0, 20.0, 2.0);
+    input.setRange (-10.0, 20.0, 0.5);
     input.setDoubleClickReturnValue (true, 0.0);
     input.setTooltip ("GAIN into the valve channel amp (double-click for 0). Push it to drive the valves; bring the fader down to match.");
     input.onValueChange = [this] { engine.strip (index).inputDb = (float) input.getValue(); repaint(); changed(); };
 
-    treble.setRange (-10.0, 10.0, 2.0);
+    treble.setRange (-10.0, 10.0, 0.5);
     treble.setDoubleClickReturnValue (true, 0.0);
     treble.setTooltip ("TREBLE (double-click for flat). Pop: lift is a bell at 5 kHz, cut a shelf at 10 kHz. Classic: a 10 kHz shelf.");
     treble.onValueChange = [this] { engine.strip (index).trebleDb = (float) treble.getValue(); repaint(); changed(); };
 
-    bass.setRange (-10.0, 10.0, 2.0);
+    bass.setRange (-10.0, 10.0, 0.5);
     bass.setDoubleClickReturnValue (true, 0.0);
     bass.setTooltip ("BASS: a 100 Hz shelf (double-click for flat)");
     bass.onValueChange = [this] { engine.strip (index).bassDb = (float) bass.getValue(); repaint(); changed(); };
@@ -433,14 +427,14 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     pan.setTooltip ("Pan (double-click to centre)");
     pan.onValueChange = [this] { engine.strip (index).pan = (float) pan.getValue(); repaint(); changed(); };
 
-    presence.setRange (-10.0, 10.0, 2.0);
+    presence.setRange (-10.0, 10.0, 0.5);
     presence.setDoubleClickReturnValue (true, 0.0);
     presence.setTooltip ("PRESENCE: a bell at the frequency on the small switch (double-click for flat)");
     presence.onValueChange = [this] { engine.strip (index).presenceDb = (float) presence.getValue(); repaint(); changed(); };
 
     presenceFreq.setRange (0.0, numPresenceFreqs - 1, 1.0);
     presenceFreq.setDoubleClickReturnValue (true, 4.0);
-    presenceFreq.setTooltip ("Presence frequency: 500, 800, 1.2k, 1.8k, 2.8k, 4.2k, 6.8k or 10k");
+    presenceFreq.setTooltip ("Presence frequency: a bell at 500, 800, 1.2k, 1.8k, 2.8k, 4.2k or 6.8k, or a 10 kHz shelf");
     presenceFreq.onValueChange = [this] { engine.strip (index).presenceFreq = (int) presenceFreq.getValue(); repaint(); changed(); };
 
     comp.setRange (0.0, 24.0, 1.0);
@@ -498,6 +492,7 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     };
     addAndMakeVisible (fader);
     addAndMakeVisible (meter);
+    addChildComponent (chanVu);
 
     dbLabel.setJustificationType (juce::Justification::centred);
     dbLabel.setFont (Pequod::heading (12.0f, false));
@@ -513,11 +508,13 @@ void ChannelStrip::setDesk (Desk d)
     skin = &DeskSkin::of (d);
     const auto& info = deskInfo (d);
     input.setVisible (info.hasGain);
-    treble.setVisible (info.eq != EqStyle::none);
+    treble.setVisible (info.eq == EqStyle::redd || info.eq == EqStyle::tgMk1);
     bass.setVisible (info.eq != EqStyle::none);
     trebleMode.setVisible (info.eq == EqStyle::redd);
-    presence.setVisible (info.eq == EqStyle::tg);
-    presenceFreq.setVisible (info.eq == EqStyle::tg);
+    presence.setVisible (info.eq == EqStyle::tgMk4);
+    presenceFreq.setVisible (info.eq == EqStyle::tgMk4);
+    chanVu.setVisible (info.channelVus);
+    meter.setVisible (! info.channelVus);
     comp.setVisible (info.hasComp);
     recovery.setVisible (info.hasComp);
     compMode.setVisible (info.hasComp);
@@ -525,9 +522,10 @@ void ChannelStrip::setDesk (Desk d)
     input.setTooltip (info.channelAsym > 0.2f
         ? "GAIN into the valve channel amp (double-click for 0). Push it to drive the valves; bring the fader down to match."
         : "GAIN into the channel amp (double-click for 0). Push it and the transistors get edgy; bring the fader down to match.");
-    bass.setTooltip (info.eq == EqStyle::tg ? "BASS: a 50 Hz shelf (double-click for flat)" : "BASS: a 100 Hz shelf (double-click for flat)");
-    treble.setTooltip (info.eq == EqStyle::tg ? "TREBLE: a broad lift or cut around 10 kHz (double-click for flat)"
-                                              : "TREBLE (double-click for flat). Pop: lift is a bell at 5 kHz, cut a shelf at 10 kHz. Classic: a 10 kHz shelf.");
+    const bool tg = info.eq == EqStyle::tgMk1 || info.eq == EqStyle::tgMk4;
+    bass.setTooltip (tg ? "BASS: a 50 Hz shelf (double-click for flat)" : "BASS: a 100 Hz shelf (double-click for flat)");
+    treble.setTooltip (tg ? "TREBLE (double-click for flat): the lift is a bell at 5 kHz, the cut a shelf at 10 kHz"
+                          : "TREBLE (double-click for flat). Pop: lift is a bell at 5 kHz, cut a shelf at 10 kHz. Classic: a 10 kHz shelf.");
     for (auto* k : { &input, &treble, &presence, &presenceFreq, &bass, &comp, &recovery, &echo, &pan }) k->setSkin (skin);
     fader.setSkin (skin);
 
@@ -592,7 +590,9 @@ void ChannelStrip::refreshFromEngine()
 
 void ChannelStrip::updateMeter()
 {
-    meter.push (MixEngine::takePeak (engine.strip (index).peak));
+    const float pk = MixEngine::takePeak (engine.strip (index).peak);
+    meter.push (pk);
+    chanVu.push (pk);
     auto& s = engine.strip (index);
     const bool d = s.mute.load() || (engine.anySolo() && ! s.solo.load());
     if (d != dimmed) { dimmed = d; repaint(); }
@@ -660,9 +660,7 @@ void ChannelStrip::paint (juce::Graphics& g)
         drawKnobCaption (g, input, "GAIN", signedDb (input.getValue()));
         drawKnobCaption (g, treble, "TREBLE", signedDb (treble.getValue()));
         {
-            const float hz = presenceHz ((int) presenceFreq.getValue());
-            const auto f = hz >= 1000.0f ? juce::String (hz / 1000.0f, hz < 10000.0f && std::fmod (hz, 1000.0f) != 0.0f ? 1 : 0) + "k" : juce::String ((int) hz);
-            drawKnobCaption (g, presence, "PRES " + f, signedDb (presence.getValue()));
+            drawKnobCaption (g, presence, "PRES " + presenceLabel ((int) presenceFreq.getValue()), signedDb (presence.getValue()));
         }
         drawKnobCaption (g, bass, "BASS", signedDb (bass.getValue()));
         if (comp.isVisible())
@@ -695,6 +693,11 @@ void ChannelStrip::resized()
     if (skin == nullptr) return;
     auto r = getLocalBounds().reduced (6, 0);
     r.removeFromTop (28);
+    if (chanVu.isVisible())
+    {
+        chanVu.setBounds (r.removeFromTop (52));
+        r.removeFromTop (4);
+    }
     nameLabel.setBounds (r.removeFromTop (22));
 
     if (skin->bakeliteKnobs)
@@ -747,8 +750,11 @@ void ChannelStrip::resized()
     if (skin->bakeliteKnobs) r.removeFromBottom (14);    // the panel's screw
     dbLabel.setBounds (r.removeFromBottom (20));
     r.removeFromBottom (12);
-    meter.setBounds (r.removeFromRight (skin->bakeliteKnobs ? 7 : 10).reduced (0, 17));
-    r.removeFromRight (2);
+    if (meter.isVisible())
+    {
+        meter.setBounds (r.removeFromRight (skin->bakeliteKnobs ? 7 : 10).reduced (0, 17));
+        r.removeFromRight (2);
+    }
     fader.setBounds (r);
 }
 
@@ -773,6 +779,17 @@ MasterStrip::MasterStrip (MixEngine& e) : engine (e)
     echoReturn.setTooltip ("ECHO RETURN: how much of the chamber comes back into the mix");
     echoReturn.onValueChange = [this] { engine.echoReturnDb = (float) echoReturn.getValue(); repaint(); if (onChanged) onChanged(); };
     addChildComponent (echoReturn);
+
+    mainPresence.setRange (-10.0, 10.0, 0.5);
+    mainPresence.setDoubleClickReturnValue (true, 0.0);
+    mainPresence.setTooltip ("PRESENCE on the main outputs: a bell at the frequency on the small switch, or a 10 kHz shelf (double-click for flat)");
+    mainPresence.onValueChange = [this] { engine.mainPresenceDb = (float) mainPresence.getValue(); repaint(); if (onChanged) onChanged(); };
+    addChildComponent (mainPresence);
+    mainPresenceFreq.setRange (0.0, numPresenceFreqs - 1, 1.0);
+    mainPresenceFreq.setDoubleClickReturnValue (true, 4.0);
+    mainPresenceFreq.setTooltip ("Presence frequency on the mains");
+    mainPresenceFreq.onValueChange = [this] { engine.mainPresenceFreq = (int) mainPresenceFreq.getValue(); repaint(); if (onChanged) onChanged(); };
+    addChildComponent (mainPresenceFreq);
 
     spread.setRange (0.0, 2.0, 0.05);
     spread.setDoubleClickReturnValue (true, 1.0);
@@ -799,6 +816,12 @@ void MasterStrip::setDesk (Desk d)
     echoReturn.setSkin (skin);
     spread.setVisible (info.hasSpread);
     spread.setSkin (skin);
+    mainPresence.setVisible (info.hasMainPresence);
+    mainPresenceFreq.setVisible (info.hasMainPresence);
+    mainPresence.setSkin (skin);
+    mainPresenceFreq.setSkin (skin);
+    spread.setTooltip (desk == Desk::redd51 ? "SPREADER: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)"
+                                            : "SPREAD: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)");
     fader.setSkin (skin);
     dbLabel.setColour (juce::Label::textColourId, skin->bakeliteKnobs ? skin->accent : Pequod::Colours::text);
     resized();
@@ -810,6 +833,8 @@ void MasterStrip::refreshFromEngine()
     fader.setValue (engine.masterDb.load(), juce::dontSendNotification);
     echoReturn.setValue (engine.echoReturnDb.load(), juce::dontSendNotification);
     spread.setValue (engine.spread.load(), juce::dontSendNotification);
+    mainPresence.setValue (engine.mainPresenceDb.load(), juce::dontSendNotification);
+    mainPresenceFreq.setValue (engine.mainPresenceFreq.load(), juce::dontSendNotification);
     dbLabel.setText (fader.getTextFromValue (fader.getValue()), juce::dontSendNotification);
     repaint();
 }
@@ -865,7 +890,17 @@ void MasterStrip::paint (juce::Graphics& g)
         knobLabel (echoReturn, "ECHO RETURN", sendText (echoReturn.getValue()));
         {
             const float sp = (float) spread.getValue();
-            knobLabel (spread, "SPREAD", sp < 0.025f ? juce::String ("MONO") : juce::String (juce::roundToInt (sp * 100.0f)) + "%");
+            knobLabel (spread, desk == Desk::redd51 ? "SPREADER" : "SPREAD", sp < 0.025f ? juce::String ("MONO") : juce::String (juce::roundToInt (sp * 100.0f)) + "%");
+        }
+        if (mainPresence.isVisible())
+        {
+            auto b = mainPresence.getBounds().toFloat();
+            g.setFont (Pequod::heading (10.0f));
+            g.setColour (skin->engraving);
+            g.drawText ("PRESENCE", juce::Rectangle<float> (b.getX() - 76.0f, b.getY(), 72.0f, b.getHeight() * 0.5f), juce::Justification::centredRight);
+            g.setFont (Pequod::heading (10.0f, false));
+            g.drawText (signedDb (mainPresence.getValue()) + "  " + presenceLabel ((int) mainPresenceFreq.getValue()),
+                        juce::Rectangle<float> (b.getX() - 76.0f, b.getCentreY(), 72.0f, b.getHeight() * 0.5f), juce::Justification::centredRight);
         }
         g.setFont (Pequod::heading (11.0f));
         g.setColour (skin->engraving);
@@ -911,6 +946,13 @@ void MasterStrip::resized()
         {
             r.removeFromTop (4);
             spread.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
+        }
+        if (mainPresence.isVisible())
+        {
+            r.removeFromTop (4);
+            auto row = r.removeFromTop (44).withSizeKeepingCentre (44 + 6 + 28, 44);
+            mainPresence.setBounds (row.removeFromLeft (44));
+            mainPresenceFreq.setBounds (row.removeFromRight (28).withSizeKeepingCentre (28, 28));
         }
         lampArea = {};      // the main amps round off just before full scale: nothing to clip
         r.removeFromTop (30);

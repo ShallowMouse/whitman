@@ -129,7 +129,9 @@ public:
     std::atomic<int>   desk { (int) Desk::whitman };
     std::atomic<float> masterDb { 0.0f };
     std::atomic<float> echoReturnDb { -6.0f };
-    std::atomic<float> spread { 1.0f };            // TG: stereo width of the mix, 0 (mono) .. 1 (as panned) .. 2 (wide)
+    std::atomic<float> spread { 1.0f };            // REDD.51 / TG: stereo width of the mix, 0 (mono) .. 1 (as panned) .. 2 (wide)
+    std::atomic<float> mainPresenceDb { 0.0f };    // TG: presence on the main outputs
+    std::atomic<int>   mainPresenceFreq { 4 };
     std::atomic<float> masterPeakL { 0.0f }, masterPeakR { 0.0f };
     std::atomic<bool>  masterClipped { false };    // over 0 dBFS since the UI last cleared it
 
@@ -162,6 +164,10 @@ private:
     void deskChanged (Desk d);
     void updateEq (Strip& s, float bassDb, float trebleDb, bool classic) noexcept;
     void updateTgEq (Strip& s, float bassDb, float trebleDb, float presDb, int presFreq) noexcept;
+    juce::IIRCoefficients trebleCoefs (float db, bool classic) const noexcept;
+    juce::IIRCoefficients presenceCoefs (float db, int freq) const noexcept;
+    std::array<juce::IIRFilter, 2> mainPresence;
+    float setMainPres = 1000.0f; int setMainPresFreq = -1;
     void compress (Strip& s, float* x, int n) noexcept;
     static float onePoleCoef (double hz, double sr) noexcept { return (float) std::exp (-juce::MathConstants<double>::twoPi * hz / sr); }
 

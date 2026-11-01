@@ -377,18 +377,34 @@ static void testRedd37AndTg()
       const float at100 = sineGainDb (T, 200.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; });
       check (lo > 6.5f && at100 < 3.0f, "TG BASS +10: a 50 Hz shelf (" + juce::String (lo, 1) + " dB at 20 Hz, " + juce::String (at100, 1) + " at 200 Hz)"); }
 
+    const auto T4 = Desk::tg12345mk4;
     { bool ok = true; juce::String worst;
-      for (int i = 0; i < numPresenceFreqs; ++i)
+      for (int i = 0; i < numPresenceFreqs - 1; ++i)
       {
           const float f = presenceHz (i);
-          const float on = sineGainDb (T, f, [i] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = i; });
-          const float off = sineGainDb (T, f * (f < 3000.0f ? 4.0f : 0.25f), [i] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = i; });
+          const float on = sineGainDb (T4, f, [i] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = i; });
+          const float off = sineGainDb (T4, f * (f < 3000.0f ? 4.0f : 0.25f), [i] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = i; });
           if (! (on > 8.0f && off < on - 4.0f)) { ok = false; worst << juce::String (f) << " Hz: " << juce::String (on, 1) << " / " << juce::String (off, 1) << "  "; }
       }
-      check (ok, "TG PRESENCE +10 peaks at each of its 8 frequencies " + worst); }
+      check (ok, "TG Mk IV PRESENCE +10: a bell at each of its 7 bell frequencies " + worst); }
 
-    { const float top = sineGainDb (T, 10000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = -10.0f; });
-      check (top < -8.0f, "TG TREBLE -10 at 10 kHz: " + juce::String (top, 1) + " dB"); }
+    { const float top = sineGainDb (T4, 16000.0f, [] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = 7; });
+      const float mid = sineGainDb (T4, 2000.0f, [] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = 7; });
+      check (top > 8.0f && mid < 1.5f, "TG Mk IV PRESENCE's last position is a 10 kHz shelf (" + juce::String (top, 1) + " dB at 16 kHz, "
+             + juce::String (mid, 1) + " at 2 kHz)"); }
+
+    { const float mk4 = sineGainDb (T4, 5000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
+      const float mk1 = sineGainDb (T, 5000.0f, [] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = 5; });
+      check (std::abs (mk4) < 0.5f && std::abs (mk1) < 0.5f, "TG: no treble on the Mk IV's channels, no presence on the Mk I's"); }
+
+    { const float pk = sineGainDb (T, 5000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
+      const float top = sineGainDb (T, 15000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = -10.0f; });
+      check (pk > 8.5f && top < -8.0f, "TG Mk I TREBLE: lift a bell at 5 kHz (" + juce::String (pk, 1) + " dB), cut a 10 kHz shelf ("
+             + juce::String (top, 1) + " dB at 15 kHz)"); }
+
+    for (auto d : { T, T4 })
+    { const float on = sineGainDb (d, 2800.0f, [] (MixEngine& e) { e.mainPresenceDb = 10.0f; e.mainPresenceFreq = 4; });
+      check (on > 8.0f, juce::String (deskInfo (d).name) + ": PRESENCE on the mains (" + juce::String (on, 1) + " dB at 2.8 kHz)"); }
 
     // compressor: steady tone well over the threshold. Above it the output rises 1 dB per 2 (COMP) or 8 (LIMIT).
     auto slope = [T] (int mode)
@@ -423,9 +439,9 @@ static void testRedd37AndTg()
              + juce::String (slow, 1) + " dB)"); }
 
     { // spread on a tone panned hard left: 0 = mono (R follows L), 1 = as panned (R silent), 2 = wider (R opposite L)
-      auto rOverL = [T] (float sp)
+      auto rOverL = [] (float sp, Desk d = Desk::tg12345)
       {
-          Rig r (8, 480); r.engine.desk = (int) T; r.engine.spread = sp;
+          Rig r (8, 480); r.engine.desk = (int) d; r.engine.spread = sp;
           r.engine.strip (0).pan = -1.0f;
           double ph = 0.0, lr = 0.0, ll = 0.0;
           for (int b = 0; b < 20; ++b)
@@ -439,15 +455,17 @@ static void testRedd37AndTg()
       const float mono = rOverL (0.0f), normal = rOverL (1.0f), wide = rOverL (2.0f);
       check (std::abs (mono - 1.0f) < 0.02f && std::abs (normal) < 0.01f && wide < -0.3f,
              "TG SPREAD: 0 is mono, 1 is as panned, 2 is wider (R/L " + juce::String (mono, 2) + " / " + juce::String (normal, 2)
-             + " / " + juce::String (wide, 2) + ")"); }
+             + " / " + juce::String (wide, 2) + ")");
+      check (std::abs (rOverL (0.0f, Desk::redd51) - 1.0f) < 0.05f && std::abs (rOverL (0.0f, Desk::redd37)) < 0.02f,
+             "REDD.51's Spreader works; the REDD.37 has none"); }
 
     { MixEngine a, b; juce::StringArray na, nb;
       MixState::reset (a, na);
-      a.desk = (int) T; a.spread = 0.6f;
+      a.desk = (int) T4; a.spread = 0.6f; a.mainPresenceDb = -3.0f; a.mainPresenceFreq = 7;
       a.strip (3).presenceDb = 4.0f; a.strip (3).presenceFreq = 6; a.strip (3).compMode = 2; a.strip (3).compDb = 9.0f; a.strip (3).recovery = 4;
       auto x = juce::parseXML (MixState::toXml (a, na)->toString());
       const bool ok = x != nullptr && MixState::fromXml (*x, b, nb);
-      check (ok && b.getDesk() == T && approx (b.spread.load(), 0.6f) && approx (b.strip (3).presenceDb.load(), 4.0f)
+      check (ok && b.getDesk() == T4 && approx (b.spread.load(), 0.6f) && approx (b.mainPresenceDb.load(), -3.0f) && b.mainPresenceFreq.load() == 7 && approx (b.strip (3).presenceDb.load(), 4.0f)
                && b.strip (3).presenceFreq.load() == 6 && b.strip (3).compMode.load() == 2 && approx (b.strip (3).compDb.load(), 9.0f)
                && b.strip (3).recovery.load() == 4,
              "Mix file keeps the TG's presence, compressor and spread"); }
