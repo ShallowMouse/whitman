@@ -33,6 +33,7 @@ endif()
 set(ENGINE_SOURCES
     Source/MixEngine.cpp
     Source/BandEq.cpp
+    Source/CircuitSim.cpp
     Source/MixState.cpp
     Source/RouteStatus.cpp)
 

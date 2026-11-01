@@ -6,6 +6,7 @@
 #include "../Source/MixEngine.h"
 #include "../Source/MixState.h"
 #include "../Source/RouteStatus.h"
+#include "../Source/CircuitSim.h"
 
 #if JUCE_WINDOWS
  #define WIN32_LEAN_AND_MEAN
@@ -626,6 +627,89 @@ static void testAmpsAndBandDesks()
 }
 
 //==============================================================================
+// The circuit simulator, against circuits worked out by hand
+static float runnerGainDb (CircuitRunner& r, double hz, double sr = 48000.0)
+{
+    double ph = 0.0, sin2 = 0.0, sout2 = 0.0;
+    const int total = (int) (sr * 0.5);
+    for (int i = 0; i < total; ++i)
+    {
+        const float x = 0.1f * (float) std::sin (ph);
+        ph += juce::MathConstants<double>::twoPi * hz / sr;
+        const float y = r.processSample (x);
+        if (i > total / 2) { sin2 += (double) x * x; sout2 += (double) y * y; }
+    }
+    return (float) (10.0 * std::log10 (sout2 / sin2));
+}
+
+static float exactDb (const Circuit& c, double hz) { return (float) (20.0 * std::log10 (std::abs (c.responseAt (hz)))); }
+
+static void testCircuitSim()
+{
+    const double pi = juce::MathConstants<double>::pi;
+    { // RC low-pass, 1 kHz corner
+        Circuit c (3); c.setInput (1); c.setOutput (2);
+        c.resistor (1, 2, 1000.0); c.capacitor (2, 0, 1.0 / (2.0 * pi * 1000.0 * 1000.0));
+        CircuitRunner r; r.prepare (c, 48000.0);
+        const float exact = exactDb (c, 1000.0), sim = runnerGainDb (r, 1000.0);
+        check (std::abs (exact + 3.0103f) < 0.01f && std::abs (sim - exact) < 0.05f,
+               "Circuit: RC low-pass is -3.01 dB at its corner (exact " + juce::String (exact, 3) + ", simulated " + juce::String (sim, 3) + ")");
+    }
+    { // series RLC band-pass: peak at 1/(2 pi sqrt(LC)), Q = sqrt(L/C)/R
+        Circuit c (4); c.setInput (1); c.setOutput (3);
+        const double L = 0.1, C = 1.0e-7, R = 200.0;     // f0 = 1591.5 Hz, Q = 5
+        c.inductor (1, 2, L); c.capacitor (2, 3, C); c.resistor (3, 0, R);
+        const double f0 = 1.0 / (2.0 * pi * std::sqrt (L * C));
+        const float peak = exactDb (c, f0), edge = exactDb (c, f0 * (std::sqrt (1.0 + 1.0 / 100.0) + 0.1));
+        CircuitRunner r; r.prepare (c, 48000.0);
+        const float sim = runnerGainDb (r, f0);
+        check (std::abs (peak) < 0.01f && std::abs (edge + 3.01f) < 0.05f && std::abs (sim - peak) < 0.1f,
+               "Circuit: RLC band-pass peaks at 0 dB at its resonance, -3 dB at the Q 5 band edge (" + juce::String (edge, 2) + "), simulated " + juce::String (sim, 2));
+    }
+    { // inverting op-amp, gain -10
+        Circuit c (4); c.setInput (1); c.setOutput (3);
+        c.resistor (1, 2, 1000.0); c.resistor (2, 3, 10000.0); c.opamp (0, 2, 3);
+        CircuitRunner r; r.prepare (c, 48000.0);
+        const auto h = c.responseAt (1000.0);
+        const float y = r.processSample (0.05f);
+        check (std::abs (h.real() + 10.0) < 1.0e-6 && std::abs (y + 0.5f) < 1.0e-5f, "Circuit: inverting op-amp, gain -10 (exact " + juce::String (h.real(), 3) + ", simulated " + juce::String (y / 0.05f, 3) + ")");
+    }
+    { // Sallen-Key low-pass, unity gain: f0 = 1/(2 pi R sqrt(C1 C2)), Q = sqrt(C1/C2)/2
+        Circuit c (5); c.setInput (1); c.setOutput (4);
+        const double R = 10000.0, C1 = 2.0e-8, C2 = 1.0e-8;
+        c.resistor (1, 2, R); c.resistor (2, 3, R); c.capacitor (2, 4, C1); c.capacitor (3, 0, C2);
+        c.vcvs (3, 0, 4, 1.0);
+        const double f0 = 1.0 / (2.0 * pi * R * std::sqrt (C1 * C2)), Q = std::sqrt (C1 / C2) / 2.0;
+        const float atF0 = exactDb (c, f0);
+        CircuitRunner r; r.prepare (c, 48000.0);
+        const float sim = runnerGainDb (r, f0);
+        check (std::abs (atF0 - (float) (20.0 * std::log10 (Q))) < 0.01f && std::abs (sim - atF0) < 0.1f,
+               "Circuit: Sallen-Key low-pass, " + juce::String (20.0 * std::log10 (Q), 2) + " dB at f0 (exact " + juce::String (atF0, 2) + ", simulated " + juce::String (sim, 2) + ")");
+    }
+    { // a passive bass / treble tone network (several reactive parts): simulation matches the exact response below 8 kHz
+        Circuit c (7); c.setInput (1); c.setOutput (5);
+        c.resistor (1, 2, 22000.0); c.capacitor (2, 3, 4.7e-9); c.resistor (3, 5, 100000.0); c.capacitor (1, 4, 22e-9);
+        c.resistor (4, 5, 47000.0); c.capacitor (5, 6, 100e-9); c.resistor (6, 0, 4700.0); c.resistor (5, 0, 100000.0);
+        c.inductor (2, 0, 0.5, 30.0);
+        CircuitRunner r; r.prepare (c, 48000.0);
+        float worst = 0.0f;
+        for (double hz : { 30.0, 100.0, 300.0, 1000.0, 3000.0, 8000.0 })
+        { r.reset(); worst = juce::jmax (worst, std::abs (runnerGainDb (r, hz) - exactDb (c, hz))); }
+        check (worst < 0.15f, "Circuit: a passive tone network matches its exact response, 30 Hz to 8 kHz (worst " + juce::String (worst, 3) + " dB)");
+    }
+    { // moving a value keeps the state: no jump
+        Circuit c (3); c.setInput (1); c.setOutput (2);
+        const int rr = c.resistor (1, 2, 1000.0); c.capacitor (2, 0, 1.0e-6);
+        CircuitRunner r; r.prepare (c, 48000.0);
+        float last = 0.0f;
+        for (int i = 0; i < 2000; ++i) last = r.processSample (1.0f);
+        c.setValue (rr, 1100.0); r.prepare (c, 48000.0);
+        const float next = r.processSample (1.0f);
+        check (std::abs (next - last) < 0.01f, "Circuit: changing a value mid-signal doesn't jump (" + juce::String (last, 4) + " -> " + juce::String (next, 4) + ")");
+    }
+}
+
+//==============================================================================
 static void testMixFiles()
 {
     MixEngine a, b;
@@ -731,6 +815,7 @@ int main()
     testRedd();
     testRedd37AndTg();
     testAmpsAndBandDesks();
+    testCircuitSim();
     testMixFiles();
     testRouteStatus();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
