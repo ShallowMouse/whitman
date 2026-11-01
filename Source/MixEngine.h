@@ -5,6 +5,8 @@
 #include <atomic>
 #include <vector>
 #include "Desk.h"
+#include "AmpModel.h"
+#include "BandEq.h"
 
 namespace whitman
 {
@@ -33,24 +35,6 @@ inline float fastTanh (float x) noexcept
     const float x2 = x * x;
     return x * (27.0f + x2) / (27.0f + 9.0f * x2);
 }
-
-/** A valve gain stage: unity slope for small signals, rounding off towards `ceiling`.
-    Lopsided like a single-ended stage: one half of the wave rounds off sooner than the
-    other (by `asym`), so as it's driven the grit is mostly even harmonics. The output
-    never swings past `ceiling`. */
-struct Valve
-{
-    float pos = 1.0f, neg = 1.0f;
-    void set (float ceiling, float asym) noexcept
-    {
-        pos = ceiling * (1.0f - asym);
-        neg = ceiling;
-    }
-    float operator() (float x) const noexcept
-    {
-        return x >= 0.0f ? pos * fastTanh (x / pos) : neg * fastTanh (x / neg);
-    }
-};
 
 //==============================================================================
 /** Which of the audio device's channels go where. With Hawthorne Route the driver
@@ -101,6 +85,20 @@ public:
         std::atomic<float> compDb { 0.0f };         // how hard: 0..24 dB into the compressor
         std::atomic<int>   recovery { 2 };          // 0..5 (0.5 s)
         std::atomic<float> gainReduction { 0.0f };  // dB, for the UI
+        // band EQ (Trident, Neve, SSL, Neotek): each desk's own settings
+        std::array<BandEqParams, numBandEqDesks> eqs;
+        BandEqParams* eqFor (Desk d) noexcept { const int i = bandEqSlot (d); return i >= 0 ? &eqs[(size_t) i] : nullptr; }
+        // SSL channel dynamics
+        std::atomic<float> sslRatio { 1.0f };       // 1 .. 20 (20 = infinity: a limiter)
+        std::atomic<float> sslThresh { 10.0f };     // dBu, -20 .. +10
+        std::atomic<float> sslRelease { 0.3f };     // s, 0.1 .. 4
+        std::atomic<bool>  sslFast { false };       // 1 ms attack (else auto)
+        std::atomic<float> gateRange { 0.0f };      // dB, 0 .. 40 (0 = off)
+        std::atomic<float> gateThresh { -30.0f };   // dBu, -30 .. +10
+        std::atomic<float> gateRelease { 0.3f };    // s, 0.1 .. 4
+        std::atomic<bool>  gateFast { false };
+        std::atomic<bool>  gateMode { false };      // false = expander, true = gate
+        std::atomic<float> gateReduction { 0.0f };  // dB, for the UI
         std::atomic<float> peak     { 0.0f };       // post-fader, since the UI last took it
 
         // audio thread
@@ -108,6 +106,9 @@ public:
         juce::IIRFilter bass, treble, presence;
         float setBass = 1000.0f, setTreble = 1000.0f, setPresence = 1000.0f; bool setClassic = false; int setPresFreq = -1;
         float env = 0.0f;                           // compressor detector (gain-reduction dB)
+        float gateEnv = 0.0f, gateLevel = 0.0f;     // gate (attenuation dB, level follower)
+        float flux = 0.0f;                          // the channel transformer's flux
+        BandEq bandEq;
         float hp = 0.0f, hpIn = 0.0f, lp = 0.0f;
         void resetState() noexcept;
     };
@@ -150,8 +151,10 @@ private:
     double sampleRate = 48000.0;
     int lastDesk = -1;
 
-    // the desk's valves and filters, set when the desk changes
-    Valve channelAmp, mainAmp;
+    // the desk's amplifiers and filters, set when the desk changes
+    Amp channelAmp, mainAmp;
+    std::array<float, 2> mainFlux {};
+    float mainHpCoef = 1.0f;
     float hpCoef = 0.0f, lpCoef = 1.0f;
     std::array<float, 2> mainHp {}, mainHpIn {};
 
@@ -169,6 +172,7 @@ private:
     std::array<juce::IIRFilter, 2> mainPresence;
     float setMainPres = 1000.0f; int setMainPresFreq = -1;
     void compress (Strip& s, float* x, int n) noexcept;
+    void sslDynamics (Strip& s, float* x, int n) noexcept;
     static float onePoleCoef (double hz, double sr) noexcept { return (float) std::exp (-juce::MathConstants<double>::twoPi * hz / sr); }
 
     static void raisePeak (std::atomic<float>& p, float v) noexcept

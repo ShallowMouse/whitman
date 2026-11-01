@@ -71,6 +71,10 @@ void MixEngine::Strip::resetState() noexcept
     setPresFreq = -1;
     env = 0.0f;
     gainReduction = 0.0f;
+    gateEnv = gateLevel = 0.0f;
+    gateReduction = 0.0f;
+    flux = 0.0f;
+    bandEq.reset();
     hp = hpIn = lp = 0.0f;
 }
 
@@ -106,12 +110,14 @@ void MixEngine::deskChanged (Desk d)
 {
     const auto& info = deskInfo (d);
     deskNow = d;
-    channelAmp.set (info.channelCeiling > 0.0f ? info.channelCeiling : 1.0f, info.channelAsym);
-    mainAmp.set (info.mainCeiling > 0.0f ? info.mainCeiling : 1.0f, info.mainAsym);
-    hpCoef = info.lowCutHz > 0.0f ? onePoleCoef (info.lowCutHz, sampleRate) : 1.0f;    // 1 = passes everything
-    lpCoef = info.highCutHz > 0.0f && info.highCutHz < sampleRate * 0.45 ? onePoleCoef (info.highCutHz, sampleRate) : 0.0f;
-    for (auto& s : strips) s.resetState();
-    mainHp = {}; mainHpIn = {};
+    const auto ch = ampSpecOf (d, false), mn = ampSpecOf (d, true);
+    channelAmp.set (ch, sampleRate);
+    mainAmp.set (mn, sampleRate);
+    hpCoef = ch.lowCutHz > 0.0f ? onePoleCoef (ch.lowCutHz, sampleRate) : 1.0f;    // 1 = passes everything
+    lpCoef = ch.highCutHz > 0.0f && ch.highCutHz < sampleRate * 0.45 ? onePoleCoef (ch.highCutHz, sampleRate) : 0.0f;
+    mainHpCoef = mn.lowCutHz > 0.0f ? onePoleCoef (mn.lowCutHz, sampleRate) : 1.0f;
+    for (auto& s : strips) { s.resetState(); s.bandEq.prepare (sampleRate); }
+    mainHp = {}; mainHpIn = {}; mainFlux = {};
     chamber.reset();
     std::fill (preDelay.begin(), preDelay.end(), 0.0f);
     echoHp = echoHpIn = echoLp = 0.0f;
@@ -202,6 +208,67 @@ void MixEngine::updateEq (Strip& s, float bassDb, float trebleDb, bool classic) 
     }
 }
 
+void MixEngine::sslDynamics (Strip& s, float* x, int n) noexcept
+{
+    // SSL 4000 E channel dynamics: the expander / gate, then the compressor / limiter.
+    // Levels in dBu (0 VU = +4 dBu = -18 dBFS peak). Attack 1 ms with FAST, else program-dependent (~10 ms here).
+    const float sr = (float) sampleRate;
+    auto coef = [sr] (float seconds) { return std::exp (-1.0f / (juce::jmax (1.0e-4f, seconds) * sr)); };
+    auto dbuOf = [] (float a) { return a > 1.0e-7f ? juce::Decibels::gainToDecibels (a) + 22.0f : -200.0f; };
+
+    // --- expander / gate
+    const float range = juce::jlimit (0.0f, 40.0f, s.gateRange.load (std::memory_order_relaxed));
+    float mostGate = 0.0f;
+    if (range > 0.05f)
+    {
+        const float thr = s.gateThresh.load (std::memory_order_relaxed);
+        const bool gate = s.gateMode.load (std::memory_order_relaxed);
+        const float att = coef (s.gateFast.load (std::memory_order_relaxed) ? 0.001f : 0.004f);
+        const float rel = coef (s.gateRelease.load (std::memory_order_relaxed));
+        const float lvlRel = coef (0.005f);
+        float lvl = s.gateLevel, g = s.gateEnv;
+        for (int k = 0; k < n; ++k)
+        {
+            const float a = std::abs (x[k]);
+            lvl = a > lvl ? a : a + lvlRel * (lvl - a);              // peak follower
+            const float under = thr - dbuOf (lvl);
+            // gate: all the range below the threshold; expander: 1:2 below it, up to the range
+            const float want = under <= 0.0f ? 0.0f : (gate ? range : juce::jmin (range, under));
+            g = want < g ? want + att * (g - want) : want + rel * (g - want);   // opening is the attack
+            x[k] *= juce::Decibels::decibelsToGain (-g);
+            mostGate = juce::jmax (mostGate, g);
+        }
+        s.gateLevel = lvl; s.gateEnv = g;
+    }
+    else { s.gateEnv = 0.0f; }
+    s.gateReduction.store (mostGate, std::memory_order_relaxed);
+
+    // --- compressor / limiter
+    const float ratioKnob = juce::jlimit (1.0f, 20.0f, s.sslRatio.load (std::memory_order_relaxed));
+    float most = 0.0f;
+    if (ratioKnob > 1.01f)
+    {
+        const float slope = ratioKnob >= 19.99f ? 1.0f : 1.0f - 1.0f / ratioKnob;   // infinity at the end
+        const float thr = s.sslThresh.load (std::memory_order_relaxed);
+        // automatic make-up (SSL's comes from ratio and threshold): half the reduction a 0 VU tone above the threshold would get
+        const float makeUp = juce::jmax (0.0f, 4.0f - thr) * slope * 0.5f;
+        const float att = coef (s.sslFast.load (std::memory_order_relaxed) ? 0.001f : 0.010f);
+        const float rel = coef (s.sslRelease.load (std::memory_order_relaxed) * 0.4f);
+        float env = s.env;
+        for (int k = 0; k < n; ++k)
+        {
+            const float over = juce::jmax (0.0f, dbuOf (std::abs (x[k])) - 3.0f - thr);     // -3: peak to rms of a sine
+            const float want = over * slope;
+            env = want > env ? want + att * (env - want) : want + rel * (env - want);
+            x[k] *= juce::Decibels::decibelsToGain (makeUp - env);
+            most = juce::jmax (most, env);
+        }
+        s.env = env;
+    }
+    else s.env = 0.0f;
+    s.gainReduction.store (most, std::memory_order_relaxed);
+}
+
 bool MixEngine::anySolo() const noexcept
 {
     for (auto& s : strips)
@@ -220,7 +287,7 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
     const Desk d = getDesk();
     if ((int) d != lastDesk) { lastDesk = (int) d; deskChanged (d); }
     const auto& info = deskInfo (d);
-    const bool valves = info.channelCeiling > 0.0f;
+    const bool valves = channelAmp.on;     // a modelled desk (the clean one has no amps)
 
     float* mixL = mix.getWritePointer (0);
     float* mixR = mix.getWritePointer (1);
@@ -256,18 +323,18 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
             const float ti = juce::Decibels::decibelsToGain (s.inputDb.load (std::memory_order_relaxed));
             float gi = s.curIn;
             const float di = (ti - gi) * inv;
-            float hp = s.hp, hpIn = s.hpIn, lp = s.lp;
+            float hp = s.hp, hpIn = s.hpIn, lp = s.lp, flux = s.flux;
             for (int k = 0; k < n; ++k)
             {
                 gi += di;
-                float v = channelAmp (x[k] * gi);
+                float v = channelAmp.process (x[k] * gi, flux);
                 // the transformers: no DC, a gentle low end below the audio band
                 hp = hpCoef * (hp + v - hpIn); hpIn = v; v = hp;
                 // and the valves' bandwidth
                 lp = lp * lpCoef + v * (1.0f - lpCoef); v = lp;
                 tmp[k] = v;
             }
-            s.curIn = ti; s.hp = hp; s.hpIn = hpIn; s.lp = lp;
+            s.curIn = ti; s.hp = hp; s.hpIn = hpIn; s.lp = lp; s.flux = flux;
 
             const float b = s.bassDb.load (std::memory_order_relaxed), t = s.trebleDb.load (std::memory_order_relaxed);
             if (info.eq == EqStyle::redd)
@@ -288,8 +355,15 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
                 if (pr != 0.0f) s.presence.processSamples (tmp, n);
                 if (tr != 0.0f) s.treble.processSamples (tmp, n);
             }
+            else if (info.eq == EqStyle::bands)
+            {
+                if (const auto* def = bandEqOf (d))
+                    s.bandEq.process (*def, *s.eqFor (d), tmp, n);
+            }
             if (info.hasComp)
                 compress (s, tmp, n);
+            if (info.sslDynamics)
+                sslDynamics (s, tmp, n);
             x = tmp;
         }
 
@@ -394,18 +468,18 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
     float m = masterCur;
     const float dm = (mt - m) * inv;
     float pL = 0.0f, pR = 0.0f;
-    const bool mainValves = info.mainCeiling > 0.0f;
+    const bool mainValves = mainAmp.on;
     for (int k = 0; k < n; ++k)
     {
         m += dm;
         float l = mixL[k] * m, r = mixR[k] * m;
         if (mainValves)
         {
-            // input transformers, then the valves (last, so nothing can overshoot their ceiling)
-            mainHp[0] = hpCoef * (mainHp[0] + l - mainHpIn[0]); mainHpIn[0] = l; l = mainHp[0];
-            mainHp[1] = hpCoef * (mainHp[1] + r - mainHpIn[1]); mainHpIn[1] = r; r = mainHp[1];
-            l = mainAmp (l);
-            r = mainAmp (r);
+            // input transformers, then the amps (last, so nothing overshoots their clip level)
+            mainHp[0] = mainHpCoef * (mainHp[0] + l - mainHpIn[0]); mainHpIn[0] = l; l = mainHp[0];
+            mainHp[1] = mainHpCoef * (mainHp[1] + r - mainHpIn[1]); mainHpIn[1] = r; r = mainHp[1];
+            l = mainAmp.process (l, mainFlux[0]);
+            r = mainAmp.process (r, mainFlux[1]);
         }
         mixL[k] = l;
         mixR[k] = r;

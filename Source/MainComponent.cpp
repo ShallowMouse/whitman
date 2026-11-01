@@ -34,7 +34,8 @@ MainComponent::MainComponent()
         b->setWantsKeyboardFocus (false);
         addAndMakeVisible (b);
     }
-    audioButton.setTooltip ("Audio device: pick Hawthorne Route (ASIO)");
+    audioButton.setTooltip ("Settings: the meters (VU or PPM) and the audio device (pick Hawthorne Route, ASIO)");
+    VUMeter::setPpm (settings().getBoolValue ("ppm", false));
     openButton.setTooltip ("Open a saved mix");
     saveButton.setTooltip ("Save this mix to a file");
     resetButton.setTooltip ("Every fader to 0 dB, pans centred, EQ flat, no echo, nothing muted or soloed");
@@ -71,7 +72,7 @@ MainComponent::MainComponent()
     viewport.setScrollBarThickness (10);
     addAndMakeVisible (viewport);
 
-    setSize (1360, 820);
+    setSize (1400, 880);
     openAudio();
     applyDesk();
     applyHawthorneInfo();
@@ -121,7 +122,7 @@ void MainComponent::openAudio()
 void MainComponent::enableAllChannels()
 {
     auto* dev = deviceManager.getCurrentAudioDevice();
-    if (dev == nullptr || ! dev->getName().containsIgnoreCase (routeDeviceName)) return;   // other devices: the user's choice in AUDIO
+    if (dev == nullptr || ! dev->getName().containsIgnoreCase (routeDeviceName)) return;   // other devices: the user's choice in SETTINGS
 
     const int ins = dev->getInputChannelNames().size(), outs = dev->getOutputChannelNames().size();
     if (dev->getActiveInputChannels().countNumberOfSetBits() >= ins
@@ -304,7 +305,7 @@ void MainComponent::applyDesk()
 void MainComponent::showDeskPicker()
 {
     juce::DialogWindow::LaunchOptions o;
-    o.content.setOwned (new DeskPicker (engine.getDesk(), [this] (Desk d)
+    o.content.setOwned (new DeskPickerView (engine.getDesk(), [this] (Desk d)
     {
         if (d == engine.getDesk()) return;
         engine.desk = (int) d;      // the engine switches at the start of its next block
@@ -314,18 +315,23 @@ void MainComponent::showDeskPicker()
     o.dialogTitle = "WHITMAN desk";
     o.dialogBackgroundColour = Pequod::Colours::bg;
     o.useNativeTitleBar = true;
-    o.resizable = false;
+    o.resizable = true;
     o.componentToCentreAround = this;
     o.launchAsync();
 }
 
 void MainComponent::showAudioSettings()
 {
-    auto* sel = new juce::AudioDeviceSelectorComponent (deviceManager, 0, maxStrips + 3, 2, maxStrips + 2, false, false, false, false);
-    sel->setSize (560, 420);
+    auto* panel = new SettingsPanel (deviceManager, VUMeter::isPpm(), [this] (bool ppm)
+    {
+        VUMeter::setPpm (ppm);
+        settings().setValue ("ppm", ppm);
+        settings().saveIfNeeded();
+        repaint();
+    });
     juce::DialogWindow::LaunchOptions o;
-    o.content.setOwned (sel);
-    o.dialogTitle = "WHITMAN audio";
+    o.content.setOwned (panel);
+    o.dialogTitle = "WHITMAN settings";
     o.dialogBackgroundColour = Pequod::Colours::panel;
     o.useNativeTitleBar = true;
     o.resizable = true;
@@ -401,7 +407,7 @@ juce::String MainComponent::statusLine (juce::Colour& c) const
     if (deviceName.isEmpty())
     {
         c = Pequod::Colours::danger;
-        return "NO AUDIO DEVICE" + dot + "click AUDIO and pick Hawthorne Route (ASIO)";
+        return "NO AUDIO DEVICE" + dot + "click SETTINGS and pick Hawthorne Route (ASIO)";
     }
     const auto rate = juce::String (deviceRate / 1000.0, 1) + " kHz";
     if (deviceIsRoute.load())

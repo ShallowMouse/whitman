@@ -6,14 +6,15 @@ namespace whitman
 {
 
 /** The desks WHITMAN can be. Saved by number in mix files: only ever add to the end. */
-enum class Desk { whitman = 0, redd51 = 1, redd37 = 2, tg12345 = 3, tg12345mk4 = 4 };   // tg12345 = the Mk I
-constexpr int numDesks = 5;
+enum class Desk { whitman = 0, redd51 = 1, redd37 = 2, tg12345 = 3, tg12345mk4 = 4,    // tg12345 = the Mk I
+                  tridentA = 5, neve8028 = 6, ssl4000e = 7, neotek = 8 };
+constexpr int numDesks = 9;
 
 /** The channel EQ's layout.
     redd:  bass 100 Hz shelf; treble Pop (lift a bell at 5 kHz, cut a 10 kHz shelf) or Classic (10 kHz shelf)
     tgMk1: bass 50 Hz shelf; treble (lift a bell at 5 kHz, cut a 10 kHz shelf)
     tgMk4: bass 50 Hz shelf; presence at 8 positions (7 bells, then a 10 kHz shelf) - no treble */
-enum class EqStyle { none, redd, tgMk1, tgMk4 };
+enum class EqStyle { none, redd, tgMk1, tgMk4, bands };     // bands: BandEq.h (Trident, Neve, SSL, Neotek)
 
 struct DeskInfo
 {
@@ -34,6 +35,8 @@ struct DeskInfo
     float channelAsym;                     // lopsidedness: even harmonics (valves); 0 = symmetrical (transistors)
     float mainCeiling, mainAsym;           // the main (line) amplifiers on the mix
     float lowCutHz, highCutHz;             // the amps' and transformers' bandwidth
+    bool sslDynamics = false;              // the SSL channel compressor and expander / gate
+    const char* sendName = "ECHO";         // the send to the chamber
 };
 
 /*  Sources, and the calls made where they disagree:
@@ -103,6 +106,47 @@ inline const DeskInfo& deskInfo (Desk d)
           "the top with the 10 kHz shelf. The same hard-working channel compressors and SPREAD.",
           true, true, EqStyle::tgMk4, true, true, true, true,
           0.95f, 0.06f, 0.99f, 0.0f, 10.0f, 22000.0f },
+
+        { "Trident A-Range", "A-RANGE",
+          "Trident Audio Developments  -  London  -  Trident Studios, early 1970s",
+          "Designed at Trident Studios by Malcolm Toft and Barry Porter, with engineers and producers like Roy Thomas Baker, "
+          "Ken Scott and Tony Visconti; only 13 were built. Records made on it include Bowie's Ziggy Stardust, Lou Reed's "
+          "Transformer and Queen's Sheer Heart Attack. Its four-band inductor EQ has a slide fader for each band's boost "
+          "and cut and a four-position switch for its frequency, with high- and low-pass filters that stack.",
+          "Warm, musical and a little aggressive: broad inductor bells in the mids, gentle 6 dB/octave shelves, and bands "
+          "that interact when they're close. Great on kick, bass, vocals and electric guitars.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.93f, 0.15f, 0.97f, 0.08f, 12.0f, 0.0f, false, "REVERB" },
+
+        { "Neve 8028", "8028",
+          "Neve Electronics  -  England  -  1970s; Sound City, Los Angeles, from 1973",
+          "Rupert Neve's class A desks, transformer-coupled with Marinair transformers. Sound City's 8028 made records "
+          "from Fleetwood Mac's 1975 album to Nirvana's Nevermind, and starred in Dave Grohl's Sound City film. The "
+          "channels here have the 1084 EQ: a high shelf at 10, 12 or 16 kHz, a mid bell from 360 Hz to 7.2 kHz with "
+          "Hi-Q, a low shelf at 35, 60, 110 or 220 Hz, and 18 dB/octave high- and low-pass filters.",
+          "Big, warm and solid: a thick low end and a smooth top, with the transformers adding weight and a gentle "
+          "even-harmonic glow when you push the GAIN. The classic 70s rock console.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.90f, 0.25f, 0.96f, 0.12f, 14.0f, 0.0f, false, "REVERB" },
+
+        { "SSL 4000 E", "4000 E",
+          "Solid State Logic  -  Oxford, England  -  from 1979",
+          "The desk of the 80s. Every channel has a four-band EQ (the 'black knob' 242), high- and low-pass filters, and "
+          "its own dynamics: a compressor / limiter and an expander / gate. At the Townhouse, Hugh Padgham and Phil "
+          "Collins found the big gated drum sound on an SSL (its talkback mic compressor, with a gate).",
+          "Clean, fast and punchy. The EQ is precise and can be aggressive; the channel compressor and gate tighten "
+          "drums and vocals into that bright, upfront, controlled 80s sound.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.98f, 0.02f, 0.99f, 0.0f, 5.0f, 0.0f, true, "REVERB" },
+
+        { "Neotek Elite", "ELITE",
+          "Neotek  -  Chicago, USA  -  Electrical Audio's custom Elite, 1998",
+          "Neotek made quiet, transparent American consoles. Steve Albini's Electrical Audio in Chicago has a custom "
+          "Neotek Elite in Studio A and a Series II in Studio B. The Elite's four-band state-variable parametric EQ: the "
+          "outer bands peak or shelf, the mids are wide or narrow, and a sweepable high-pass.",
+          "Clean and honest, with very low distortion and noise. It lets the room, the mics and the playing do the work.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.99f, 0.01f, 0.995f, 0.0f, 5.0f, 0.0f, false, "REVERB" },
     };
     return desks[juce::jlimit (0, numDesks - 1, (int) d)];
 }
@@ -118,6 +162,7 @@ inline float presenceHz (int i)
 }
 inline bool presenceIsShelf (int i) { return i >= numPresenceFreqs - 1; }
 inline bool isTg (Desk d)           { return d == Desk::tg12345 || d == Desk::tg12345mk4; }
+inline bool isEmi (Desk d)          { return d == Desk::redd37 || d == Desk::redd51 || isTg (d); }
 constexpr int numRecoveries = 6;
 inline float recoverySeconds (int i)
 {

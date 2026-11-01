@@ -30,7 +30,7 @@ public:
     {
         int y = 40;
         // oldest first, the clean desk last
-        for (auto d : { Desk::redd37, Desk::redd51, Desk::tg12345, Desk::tg12345mk4, Desk::whitman })
+        for (auto d : { Desk::redd37, Desk::redd51, Desk::tg12345, Desk::tridentA, Desk::tg12345mk4, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::whitman })
             for (auto* c : cards)
                 if (c->desk == d) { c->setBounds (10, y, getWidth() - 20, 224); y += 236; }
     }
@@ -130,4 +130,89 @@ private:
     juce::OwnedArray<Card> cards;
 };
 
+} // namespace whitman
+
+namespace whitman
+{
+/** The picker in a scrolling window, as there are more desks than fit on a screen. */
+class DeskPickerView : public juce::Component
+{
+public:
+    DeskPickerView (Desk current, std::function<void (Desk)> onPick) : picker (current, std::move (onPick))
+    {
+        viewport.setViewedComponent (&picker, false);
+        viewport.setScrollBarsShown (true, false);
+        addAndMakeVisible (viewport);
+        setSize (picker.getWidth() + viewport.getScrollBarThickness() + 2, juce::jmin (picker.getHeight(), 760));
+    }
+    void resized() override
+    {
+        viewport.setBounds (getLocalBounds());
+        picker.setSize (getWidth() - viewport.getScrollBarThickness() - 2, picker.getHeight());
+    }
+
+private:
+    juce::Viewport viewport;
+    DeskPicker picker;
+};
+
+/** SETTINGS: the meters (VU or PPM) and the audio device. */
+class SettingsPanel : public juce::Component
+{
+public:
+    SettingsPanel (juce::AudioDeviceManager& dm, bool ppm, std::function<void (bool)> setPpm)
+        : selector (dm, 0, maxStrips + 3, 2, maxStrips + 2, false, false, false, false), onPpm (std::move (setPpm))
+    {
+        meterLabel.setText ("METERS", juce::dontSendNotification);
+        meterLabel.setFont (Pequod::heading (13.0f));
+        meterLabel.setColour (juce::Label::textColourId, Pequod::Colours::mustard);
+        addAndMakeVisible (meterLabel);
+        for (auto* b : { &vu, &ppmButton })
+        {
+            b->setRadioGroupId (1);
+            b->setClickingTogglesState (true);
+            b->setWantsKeyboardFocus (false);
+            addAndMakeVisible (b);
+        }
+        vu.setToggleState (! ppm, juce::dontSendNotification);
+        ppmButton.setToggleState (ppm, juce::dontSendNotification);
+        vu.onClick = [this] { if (vu.getToggleState() && onPpm) onPpm (false); };
+        ppmButton.onClick = [this] { if (ppmButton.getToggleState() && onPpm) onPpm (true); };
+        meterNote.setText ("The desks' needle meters: VU (average, 300 ms) or an EMI-style PPM (peaks, marks 1-7, 4 = 0 VU's level, "
+                           "falling 24 dB in 2.8 s), as in Hawthorne.", juce::dontSendNotification);
+        meterNote.setFont (Pequod::body (12.0f));
+        meterNote.setColour (juce::Label::textColourId, Pequod::Colours::textDim);
+        meterNote.setJustificationType (juce::Justification::topLeft);
+        addAndMakeVisible (meterNote);
+        audioLabel.setText ("AUDIO", juce::dontSendNotification);
+        audioLabel.setFont (Pequod::heading (13.0f));
+        audioLabel.setColour (juce::Label::textColourId, Pequod::Colours::mustard);
+        addAndMakeVisible (audioLabel);
+        addAndMakeVisible (selector);
+        setSize (580, 560);
+    }
+
+    void paint (juce::Graphics& g) override { g.fillAll (Pequod::Colours::panel); }
+
+    void resized() override
+    {
+        auto r = getLocalBounds().reduced (14);
+        meterLabel.setBounds (r.removeFromTop (22));
+        auto row = r.removeFromTop (28);
+        vu.setBounds (row.removeFromLeft (90));
+        row.removeFromLeft (6);
+        ppmButton.setBounds (row.removeFromLeft (90));
+        r.removeFromTop (4);
+        meterNote.setBounds (r.removeFromTop (34));
+        r.removeFromTop (8);
+        audioLabel.setBounds (r.removeFromTop (22));
+        selector.setBounds (r);
+    }
+
+private:
+    juce::Label meterLabel, meterNote, audioLabel;
+    juce::TextButton vu { "VU" }, ppmButton { "PPM" };
+    juce::AudioDeviceSelectorComponent selector;
+    std::function<void (bool)> onPpm;
+};
 } // namespace whitman

@@ -305,7 +305,8 @@ static void testRedd()
           r.run (1);
           most = juce::jmax (most, r.out.getMagnitude (8, 0, 512));
       }
-      check (most <= 1.0f && most > 0.8f, "Main amps top out at full scale (peak " + juce::String (most, 3) + ")"); }
+      const float rail = dbuToPeak (ampSpecOf (Desk::redd51, true).clipDbu);
+      check (most <= rail * 1.001f && most > rail * 0.85f, "REDD.51 main amps top out at their clip level, +24 dBu (peak " + juce::String (most, 3) + " of " + juce::String (rail, 3) + ")"); }
 
     { // echo: a burst, then a tail from the chamber; none without the send, none on the clean desk
       auto tailDb = [] (Desk d, float sendDb)
@@ -472,6 +473,159 @@ static void testRedd37AndTg()
 }
 
 //==============================================================================
+// Distortion against the published figures, and the four band-EQ desks
+static float thdPct (Desk d, float dbu, float hz, std::function<void (MixEngine&)> setup = {})
+{
+    Rig r (8, 480);
+    r.engine.desk = (int) d;
+    r.engine.strip (0).pan = -1.0f;            // all of it left, at unity
+    if (setup) setup (r.engine);
+    const double sr = 48000.0;
+    const float amp = dbuToPeak (dbu);
+    std::vector<float> out;
+    double ph = 0.0;
+    const int blocks = 200;
+    for (int b = 0; b < blocks; ++b)
+    {
+        for (int k = 0; k < 480; ++k) { r.in.setSample (0, k, amp * (float) std::sin (ph)); ph += juce::MathConstants<double>::twoPi * hz / sr; }
+        r.run (1);
+        if (b >= 100) for (int k = 0; k < 480; ++k) out.push_back (r.L (k));
+    }
+    auto goertzel = [&] (double f)
+    {
+        const double w = juce::MathConstants<double>::twoPi * f / sr, c = 2.0 * std::cos (w);
+        double s1 = 0, s2 = 0;
+        for (auto v : out) { const double s0 = v + c * s1 - s2; s2 = s1; s1 = s0; }
+        return std::sqrt (juce::jmax (0.0, s1 * s1 + s2 * s2 - c * s1 * s2));
+    };
+    const double fund = goertzel (hz);
+    double harm = 0.0;
+    for (int h = 2; h <= 7; ++h) if (hz * h < sr * 0.45) { const double a = goertzel (hz * h); harm += a * a; }
+    return (float) (100.0 * std::sqrt (harm) / fund);
+}
+
+static float eqGainDb (Desk d, float hz, std::function<void (BandEqParams&)> set)
+{
+    BandEqParams p;
+    p.reset (bandEqOf (d));
+    set (p);
+    return BandEq::responseDb (*bandEqOf (d), p, 48000.0, hz);
+}
+
+static void testAmpsAndBandDesks()
+{
+    // --- Neve 1073 / 1084 spec: THD no more than 0.07 % from 50 Hz to 10 kHz at +20 dBu out
+    for (float hz : { 50.0f, 1000.0f, 10000.0f })
+    {
+        const float t = thdPct (Desk::neve8028, 20.0f, hz);
+        check (t <= 0.07f && t > 0.005f, "Neve: THD at +20 dBu, " + juce::String (hz, 0) + " Hz: " + juce::String (t, 3) + " % (spec: no more than 0.07 %)");
+    }
+    { const float lo = thdPct (Desk::neve8028, 20.0f, 50.0f), hi = thdPct (Desk::neve8028, 20.0f, 1000.0f);
+      check (lo > hi * 1.3f, "Neve: the transformers distort more in the low end (" + juce::String (lo, 3) + " % at 50 Hz, " + juce::String (hi, 3) + " % at 1 kHz)"); }
+    { const float t = thdPct (Desk::neve8028, 25.5f, 1000.0f);
+      check (t < 1.0f, "Neve: still clean at +25.5 dBu (spec: over +26 dBu out) - " + juce::String (t, 2) + " %"); }
+    { bool flat = true; juce::String worst;
+      for (float hz : { 20.0f, 40.0f, 100.0f, 1000.0f, 10000.0f, 20000.0f })
+      { const float g = sineGainDb (Desk::neve8028, hz, [] (MixEngine&) {}); if (std::abs (g) > 0.5f) { flat = false; worst << juce::String (hz) << " Hz " << juce::String (g, 2) << "  "; } }
+      check (flat, "Neve: flat within 0.5 dB, 20 Hz to 20 kHz (spec) " + worst); }
+
+    // --- the ordering of how much each desk distorts at the same level
+    { const float ssl = thdPct (Desk::ssl4000e, 20.0f, 1000.0f), neotek = thdPct (Desk::neotek, 20.0f, 1000.0f),
+                  neve = thdPct (Desk::neve8028, 20.0f, 1000.0f), trident = thdPct (Desk::tridentA, 20.0f, 1000.0f),
+                  r51 = thdPct (Desk::redd51, 14.0f, 1000.0f), r37 = thdPct (Desk::redd37, 14.0f, 1000.0f);
+      check (ssl < 0.02f && neotek < 0.02f, "SSL and Neotek nearly distortion-free at +20 dBu (" + juce::String (ssl, 4) + " %, " + juce::String (neotek, 4) + " %)");
+      check (ssl < neve && neotek < neve && neve < trident, "At +20 dBu: SSL / Neotek < Neve < Trident (" + juce::String (neve, 3) + " %, " + juce::String (trident, 3) + " %)");
+      check (r51 < r37, "At +14 dBu: REDD.51 cleaner than the REDD.37 (" + juce::String (r51, 2) + " % vs " + juce::String (r37, 2) + " %)"); }
+    { const float t = thdPct (Desk::ssl4000e, 28.0f, 1000.0f);
+      check (t > 1.0f, "SSL clips hard above +26.5 dBu (" + juce::String (t, 1) + " % at +28)"); }
+
+    // --- band EQ: each band at its frequency
+    for (auto d : { Desk::tridentA, Desk::neve8028, Desk::ssl4000e, Desk::neotek })
+    {
+        const auto& def = *bandEqOf (d);
+        bool ok = true; juce::String bad;
+        for (int b = 0; b < (int) def.bands.size(); ++b)
+        {
+            const auto& band = def.bands[(size_t) b];
+            const int stepsToTry = band.swept() ? 3 : band.numSteps();
+            for (int k = 0; k < stepsToTry; ++k)
+            {
+                const float pos = band.swept() ? 0.15f + 0.35f * (float) k : (float) k;
+                const float hz = band.hzAt (pos);
+                if (hz > 18000.0f) continue;
+                const bool shelf = band.shape != Shape::bell;
+                // shelves: well past the corner; bells: at the centre
+                const bool lowShelf = band.shape == Shape::lowShelf || band.shape == Shape::lowShelf6;
+                const float at = shelf ? (lowShelf ? hz / 6.0f : juce::jmin (20000.0f, hz * 2.2f)) : hz;
+                const bool nearTop = shelf && ! lowShelf && hz * 2.2f > 20000.0f;   // a shelf this high hasn't finished rising by 20 kHz
+                if (at < 15.0f || at > 21000.0f) continue;
+                const float g = eqGainDb (d, at, [&] (BandEqParams& p) { p.gain[(size_t) b] = band.maxDb; p.freq[(size_t) b] = pos; p.q[(size_t) b] = 1.0f; });
+                const float want = band.rangeAt (1.0f);
+                const bool gentle = band.shape == Shape::lowShelf6 || band.shape == Shape::highShelf6;
+                if (! (g > want - (gentle ? 4.5f : nearTop ? 3.0f : 2.0f) && g < want + 1.0f)) { ok = false; bad << band.label << " " << juce::String (hz, 0) << ": " << juce::String (g, 1) << "  "; }
+            }
+        }
+        check (ok, juce::String (deskInfo (d).name) + ": every band reaches its full boost at its frequency " + bad);
+    }
+
+    // Trident: the shelves are gentle 6 dB/octave; its mids interact
+    { const float a = eqGainDb (Desk::tridentA, 400.0f, [] (BandEqParams& p) { p.gain[3] = 15.0f; p.freq[3] = 3; });   // bass shelf at 150 Hz
+      const float b = eqGainDb (Desk::neve8028, 400.0f, [] (BandEqParams& p) { p.gain[2] = 16.0f; p.freq[2] = 2; });   // Neve low shelf at 110 Hz
+      check (a > b, "Trident's 6 dB/octave bass shelf reaches further up than the Neve's (" + juce::String (a, 1) + " vs " + juce::String (b, 1) + " dB at 400 Hz)"); }
+
+    // Neve Hi-Q narrows the mid
+    { const float wide = eqGainDb (Desk::neve8028, 3200.0f, [] (BandEqParams& p) { p.gain[1] = 18.0f; p.freq[1] = 2; });
+      const float narrow = eqGainDb (Desk::neve8028, 3200.0f, [] (BandEqParams& p) { p.gain[1] = 18.0f; p.freq[1] = 2; p.alt[1] = true; });
+      check (narrow < wide - 3.0f, "Neve HI-Q narrows the mid (1.6 kHz boost, an octave up: " + juce::String (wide, 1) + " -> " + juce::String (narrow, 1) + " dB)"); }
+
+    // SSL: the mids' range widens with Q (+/-15 at the widest, +/-18 at the narrowest)
+    { const float lowQ = eqGainDb (Desk::ssl4000e, 1600.0f, [] (BandEqParams& p) { p.gain[1] = 18.0f; p.freq[1] = std::log (1600.0f / 600.0f) / std::log (7000.0f / 600.0f); p.q[1] = 0.0f; });
+      const float highQ = eqGainDb (Desk::ssl4000e, 1600.0f, [] (BandEqParams& p) { p.gain[1] = 18.0f; p.freq[1] = std::log (1600.0f / 600.0f) / std::log (7000.0f / 600.0f); p.q[1] = 1.0f; });
+      check (std::abs (lowQ - 15.0f) < 1.0f && std::abs (highQ - 18.0f) < 1.0f, "SSL HMF: +15 dB at Q 0.1, +18 at Q 3.5 (" + juce::String (lowQ, 1) + ", " + juce::String (highQ, 1) + ")"); }
+
+    // filters
+    { const float at = eqGainDb (Desk::neve8028, 80.0f, [] (BandEqParams& p) { p.hpfPos = 2.0f; });     // 80 Hz
+      const float oct = eqGainDb (Desk::neve8028, 40.0f, [] (BandEqParams& p) { p.hpfPos = 2.0f; });
+      check (at < -2.5f && at > -3.5f && oct - at < -14.0f, "Neve HPF 80 Hz, 18 dB/octave (" + juce::String (at, 1) + " dB at 80, " + juce::String (oct, 1) + " at 40)"); }
+    { const float one = eqGainDb (Desk::tridentA, 50.0f, [] (BandEqParams& p) { p.hpfMask = 2; });
+      const float two = eqGainDb (Desk::tridentA, 50.0f, [] (BandEqParams& p) { p.hpfMask = 2 | 4; });
+      check (two < one - 6.0f, "Trident's high-pass filters stack (50 Hz: " + juce::String (one, 1) + " with one, " + juce::String (two, 1) + " with two)"); }
+    { const float off = eqGainDb (Desk::ssl4000e, 20.0f, [] (BandEqParams&) {});
+      const float on = eqGainDb (Desk::ssl4000e, 20.0f, [] (BandEqParams& p) { p.hpfPos = 0.5f; });
+      check (std::abs (off) < 0.1f && on < -20.0f, "SSL HPF: off at 0, cuts when swept in (" + juce::String (on, 1) + " dB at 20 Hz)"); }
+
+    // SSL dynamics
+    { auto slopeAt = [] (float ratio)
+      {
+          auto at = [ratio] (float dbu) { return sineGainDb (Desk::ssl4000e, 1000.0f, [ratio] (MixEngine& e) { e.strip (0).sslRatio = ratio; e.strip (0).sslThresh = -10.0f; }, dbu - 22.0f) + dbu; };
+          return (at (12.0f) - at (4.0f)) / 8.0f;
+      };
+      const float r4 = slopeAt (4.0f), inf = slopeAt (20.0f);
+      check (std::abs (r4 - 0.25f) < 0.08f && inf < 0.06f, "SSL compressor: 4:1 is 4:1 (" + juce::String (r4, 2) + "), the end is a limiter (" + juce::String (inf, 2) + ")"); }
+    { const float quiet = sineGainDb (Desk::ssl4000e, 1000.0f, [] (MixEngine& e) { e.strip (0).gateRange = 30.0f; e.strip (0).gateThresh = -10.0f; e.strip (0).gateMode = true; }, -40.0f);
+      const float loud = sineGainDb (Desk::ssl4000e, 1000.0f, [] (MixEngine& e) { e.strip (0).gateRange = 30.0f; e.strip (0).gateThresh = -10.0f; e.strip (0).gateMode = true; }, -12.0f);
+      check (quiet < -28.0f && std::abs (loud) < 0.5f, "SSL gate: under the threshold it shuts by its range (" + juce::String (quiet, 1) + " dB), over it it's open (" + juce::String (loud, 1) + ")"); }
+    { const float ex = sineGainDb (Desk::ssl4000e, 1000.0f, [] (MixEngine& e) { e.strip (0).gateRange = 40.0f; e.strip (0).gateThresh = 0.0f; }, -40.0f + 22.0f - 22.0f - 10.0f + 10.0f);
+      check (ex < -5.0f && ex > -40.0f, "SSL expander: below the threshold it turns down gradually, not all the way (" + juce::String (ex, 1) + " dB)"); }
+
+    // mix files keep each desk's EQ apart, and the SSL dynamics
+    { MixEngine a, b; juce::StringArray na, nb;
+      MixState::reset (a, na);
+      a.strip (1).eqFor (Desk::neve8028)->gain[1] = 6.0f;
+      a.strip (1).eqFor (Desk::neve8028)->freq[1] = 4.0f;
+      a.strip (1).eqFor (Desk::tridentA)->hpfMask = 5;
+      a.strip (1).eqFor (Desk::ssl4000e)->q[2] = 0.8f;
+      a.strip (1).sslRatio = 8.0f; a.strip (1).gateRange = 20.0f; a.strip (1).gateMode = true;
+      auto x = juce::parseXML (MixState::toXml (a, na)->toString());
+      const bool ok = x != nullptr && MixState::fromXml (*x, b, nb);
+      check (ok && approx (b.strip (1).eqFor (Desk::neve8028)->gain[1].load(), 6.0f) && approx (b.strip (1).eqFor (Desk::neve8028)->freq[1].load(), 4.0f)
+               && b.strip (1).eqFor (Desk::tridentA)->hpfMask.load() == 5 && approx (b.strip (1).eqFor (Desk::ssl4000e)->q[2].load(), 0.8f)
+               && b.strip (1).eqFor (Desk::neotek)->gain[0].load() == 0.0f
+               && approx (b.strip (1).sslRatio.load(), 8.0f) && approx (b.strip (1).gateRange.load(), 20.0f) && b.strip (1).gateMode.load(),
+             "Mix file keeps each desk's EQ separately, and the SSL dynamics"); }
+}
+
+//==============================================================================
 static void testMixFiles()
 {
     MixEngine a, b;
@@ -576,6 +730,7 @@ int main()
     testMix();
     testRedd();
     testRedd37AndTg();
+    testAmpsAndBandDesks();
     testMixFiles();
     testRouteStatus();
     std::printf ("\n%d checks, %d failed\n", checks, failures);

@@ -19,6 +19,8 @@ struct DeskSkin
     bool quadrantFaders;          // Painton quadrant lever (else a straight fader)
     bool vuMeters;                // the master's meters are needle VUs (else bar meters)
     int stripWidth, masterWidth;
+    int knobStyle = 0;            // 0 black bakelite, 1 aluminium, 2 grey with a coloured cap
+    const char* plateLine = "";   // under the desk's name on the master plate
 
     static const DeskSkin& of (Desk d);
 };
@@ -45,7 +47,9 @@ private:
 };
 
 //==============================================================================
-/** A needle VU meter: cream face, -20 to +3, 0 VU = -18 dBFS (as in Hawthorne). */
+/** A needle meter, either a VU (cream face, -20 to +3, 0 VU = -18 dBFS, as in Hawthorne) or an
+    EMI-style PPM (black face, white marks 1-7, 4 = the same reference, 4 dB a mark; fast rise,
+    falls 24 dB in 2.8 s). Which one is a setting for every meter (SETTINGS > METERS). */
 class VUMeter : public juce::Component
 {
 public:
@@ -53,9 +57,15 @@ public:
     void push (float peak);          // ~30 times a second
     void paint (juce::Graphics&) override;
 
+    static void setPpm (bool on) noexcept { ppm = on; }
+    static bool isPpm() noexcept          { return ppm; }
+
 private:
     juce::String caption;
     float needle = -20.0f;           // VU
+    float ppmDb = -40.0f;            // PPM, dB relative to the reference
+    inline static bool ppm = false;
+    void paintPpm (juce::Graphics&);
 };
 
 //==============================================================================
@@ -85,16 +95,21 @@ public:
     DeskKnob();
     void setSkin (const DeskSkin* s) { skin = s; repaint(); }
     void paint (juce::Graphics&) override;
+    juce::Colour cap;             // the cap's colour (style 2), transparent = the desk's grey
 
 private:
     const DeskSkin* skin = nullptr;
 };
 
 //==============================================================================
+class BandEqPanel;
+class SslDynamicsPanel;
+
 class ChannelStrip : public juce::Component
 {
 public:
     ChannelStrip (MixEngine& engine, int index, juce::StringArray& names);
+    ~ChannelStrip() override;
 
     void setDesk (Desk d);
     /** What Hawthorne says about this track (its name; armed to record). */
@@ -117,6 +132,8 @@ private:
     DeskKnob input, treble, bass, echo, pan;
     DeskKnob presence, presenceFreq, comp, recovery;     // TG12345
     VUMeter chanVu { {} };                               // TG: a VU on every channel
+    std::unique_ptr<BandEqPanel> bandPanel;              // Trident, Neve, SSL, Neotek
+    std::unique_ptr<SslDynamicsPanel> dynPanel;          // SSL
     juce::TextButton trebleMode { "POP" }, compMode { "OFF" };
     float shownGr = 0.0f;
     juce::TextButton mute { "M" }, solo { "S" };

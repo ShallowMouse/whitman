@@ -32,6 +32,7 @@ endif()
 
 set(ENGINE_SOURCES
     Source/MixEngine.cpp
+    Source/BandEq.cpp
     Source/MixState.cpp
     Source/RouteStatus.cpp)
 
@@ -62,6 +63,7 @@ if(WHITMAN_BUILD_APP)
         Source/Main.cpp
         Source/MainComponent.cpp
         Source/Console.cpp
+        Source/DeskPanels.cpp
         Source/Updater.cpp)
 
     target_compile_definitions(Whitman PRIVATE ${COMMON_DEFS}

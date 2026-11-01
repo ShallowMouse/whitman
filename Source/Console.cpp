@@ -1,4 +1,5 @@
 #include "Console.h"
+#include "DeskPanels.h"
 
 namespace whitman
 {
@@ -15,19 +16,35 @@ const DeskSkin& DeskSkin::of (Desk d)
         // REDD.51: EMI grey-green painted steel, cream engraving, black bakelite knobs, Painton quadrant faders, VUs
         { C (0xff252825), C (0xff737a73), C (0xff5f665f), C (0xff383d39),
           C (0xfff2eee0), C (0xffd2cfc0), C (0xfff0dfb0), C (0xff1b1d1b),
-          true, true, true, 94, 236 },
+          true, true, true, 94, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
         // REDD.37: the same EMI family, an older, browner grey-green
         { C (0xff262622), C (0xff74776a), C (0xff606355), C (0xff3a3c34),
           C (0xfff2ecda), C (0xffd4cfba), C (0xfff2d9a0), C (0xff1c1c19),
-          true, true, true, 94, 236 },
+          true, true, true, 94, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
         // TG12345 Mk I: pale grey modules, black legends, black knobs, straight faders, VUs
         { C (0xff1f2224), C (0xffaeb3b6), C (0xff989da1), C (0xff5c6266),
           C (0xff15181a), C (0xff3a4044), C (0xffd8492e), C (0xff15181a),
-          true, false, true, 104, 236 },
+          true, false, true, 104, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
         // TG12345 Mk IV: the same
         { C (0xff1f2224), C (0xffaeb3b6), C (0xff989da1), C (0xff5c6266),
           C (0xff15181a), C (0xff3a4044), C (0xffd8492e), C (0xff15181a),
-          true, false, true, 104, 236 },
+          true, false, true, 104, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
+        // Trident A-Range: aubergine modules, cream legends, aluminium knobs, slide-fader EQ
+        { C (0xff1d1519), C (0xff5a3448), C (0xff47283a), C (0xff2b1822),
+          C (0xfff1e7d6), C (0xffcdbfae), C (0xffeec06a), C (0xff1a1214),
+          true, false, true, 104, 236, 1, "TRIDENT STUDIOS  -  LONDON" },
+        // Neve 8028: blue-grey modules, white legends, grey knobs with coloured caps
+        { C (0xff1b1f23), C (0xff5d6c7b), C (0xff4c5a67), C (0xff323b44),
+          C (0xfff3f4f2), C (0xffcdd3d8), C (0xffe9c46a), C (0xff15191c),
+          true, false, true, 104, 236, 2, "SOUND CITY  -  VAN NUYS" },
+        // SSL 4000 E: dark grey, white legends, colour-capped knobs
+        { C (0xff151617), C (0xff43464b), C (0xff35383c), C (0xff23252a),
+          C (0xfff2f2f2), C (0xffbfc2c6), C (0xfff0c24a), C (0xff111213),
+          true, false, true, 126, 236, 2, "OXFORD  -  ENGLAND" },
+        // Neotek Elite: light grey, dark legends, grey knobs with coloured caps
+        { C (0xff1e2022), C (0xffb2b4b3), C (0xff9fa2a1), C (0xff5d6062),
+          C (0xff16181a), C (0xff3a3e41), C (0xff2f6fae), C (0xff16181a),
+          true, false, true, 104, 236, 2, "ELECTRICAL AUDIO  -  CHICAGO" },
     };
     return skins[juce::jlimit (0, numDesks - 1, (int) d)];
 }
@@ -118,15 +135,78 @@ void Meter::paint (juce::Graphics& g)
 //==============================================================================
 void VUMeter::push (float peak)
 {
+    // PPM: peaks straight in, then falls 24 dB in 2.8 s
+    const float rel = peak > 0.0f ? juce::Decibels::gainToDecibels (peak) - nominalDbfs : -40.0f;
+    const float nextPpm = juce::jlimit (-40.0f, 20.0f, juce::jmax (rel, ppmDb - 8.6f / 30.0f));
+    if (ppm && std::abs (nextPpm - ppmDb) > 0.05f) repaint();
+    ppmDb = nextPpm;
+
     // a VU reads the average: a sine's is ~3 dB under its peak. 0 VU = -18 dBFS.
     const float vu = peak > 0.0f ? juce::Decibels::gainToDecibels (peak * 0.707f) - nominalDbfs : -40.0f;
     const float target = juce::jlimit (-22.0f, 4.0f, vu);
     const float next = needle + (target - needle) * 0.32f;     // ~300 ms to settle, like a real VU
-    if (std::abs (next - needle) > 0.02f) { needle = next; repaint(); }
+    if (std::abs (next - needle) > 0.02f) { needle = next; if (! ppm) repaint(); }
+}
+
+// PPM scale: marks 1..7, 4 = reference level, 4 dB a mark (6 dB between 1 and 2), as in Hawthorne
+static float ppmMarkPos (float mark) { return 0.06f + (mark - 1.0f) / 6.0f * 0.88f; }
+
+void VUMeter::paintPpm (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat();
+    g.setColour (juce::Colour (0xff111211));
+    g.fillRoundedRectangle (r, 4.0f);
+    auto face = r.reduced (4.0f);
+    g.setColour (juce::Colour (0xff141414));
+    g.fillRoundedRectangle (face, 2.5f);
+
+    const juce::Point<float> pivot (face.getCentreX(), face.getBottom() + face.getHeight() * 0.06f);
+    const float radius = face.getHeight() * 0.64f;
+    const float span = 0.62f;
+    auto angleOf = [span] (float pos) { return -span + 2.0f * span * pos; };
+    auto onArc = [&] (float a, float rad) { return pivot.translated (rad * std::sin (a), -rad * std::cos (a)); };
+    const bool small = getWidth() < 130;
+
+    const juce::Colour ink (0xfff2f2ee);
+    g.setColour (ink);
+    g.setFont (Pequod::heading (small ? 8.5f : 10.0f));
+    for (int m = 1; m <= 7; ++m)
+    {
+        const float a = angleOf (ppmMarkPos ((float) m));
+        g.drawLine (juce::Line<float> (onArc (a, radius), onArc (a, radius + 5.0f)), 1.4f);
+        if (! small || m % 2 == 0 || m == 7)
+            g.drawText (juce::String (m), juce::Rectangle<float> (14.0f, 10.0f).withCentre (onArc (a, radius + 12.0f)), juce::Justification::centred);
+        if (m < 7)
+        {
+            const float h = angleOf (ppmMarkPos ((float) m + 0.5f));
+            g.drawLine (juce::Line<float> (onArc (h, radius), onArc (h, radius + 2.5f)), 0.9f);
+        }
+    }
+    g.setFont (Pequod::heading (small ? 10.0f : 12.0f));
+    g.drawText ("PPM", face.withTrimmedTop (face.getHeight() * 0.52f).withHeight (14.0f), juce::Justification::centred);
+    if (caption.isNotEmpty())
+    {
+        g.setFont (Pequod::heading (8.5f, false));
+        g.drawText (caption, face.withTrimmedTop (face.getHeight() * 0.52f + 14.0f).withHeight (11.0f), juce::Justification::centred);
+    }
+
+    // needle: white on the black face
+    const float mark = ppmDb >= -8.0f ? 4.0f + ppmDb / 4.0f : 2.0f + (ppmDb + 8.0f) / 6.0f;
+    const float pos = juce::jlimit (0.0f, 1.06f, mark < 1.0f ? ppmMarkPos (1.0f) * juce::jmax (0.0f, mark) : ppmMarkPos (mark));
+    const float a = angleOf (pos);
+    {
+        juce::Graphics::ScopedSaveState clip (g);
+        g.reduceClipRegion (face.toNearestInt());
+        g.setColour (juce::Colour (0xfffafafa));
+        g.drawLine (juce::Line<float> (onArc (a, radius * 0.25f), onArc (a, radius + 8.0f)), 1.6f);
+    }
+    g.setColour (juce::Colour (0xff111211));
+    g.fillRect (face.withTop (face.getBottom() - 10.0f));
 }
 
 void VUMeter::paint (juce::Graphics& g)
 {
+    if (ppm) { paintPpm (g); return; }
     auto r = getLocalBounds().toFloat();
     // bezel and cream face
     g.setColour (juce::Colour (0xff111211));
@@ -198,6 +278,7 @@ Fader::Fader() : juce::Slider (juce::Slider::LinearVertical, juce::Slider::NoTex
     setDoubleClickReturnValue (true, 0.0);
     setVelocityBasedMode (false);
     setMouseDragSensitivity (400);
+    setScrollWheelEnabled (false);       // the wheel scrolls the console, it never moves a fader
     setWantsKeyboardFocus (false);
     setPopupDisplayEnabled (false, false, nullptr);
 }
@@ -311,6 +392,7 @@ void Fader::paintQuadrant (juce::Graphics& g)
 DeskKnob::DeskKnob() : juce::Slider (juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox)
 {
     setWantsKeyboardFocus (false);
+    setScrollWheelEnabled (false);       // the wheel never turns a knob
     setMouseDragSensitivity (180);
 }
 
@@ -343,6 +425,38 @@ void DeskKnob::paint (juce::Graphics& g)
         for (int i = 0; i <= steps; ++i) dot ((float) i / (float) steps, i == steps / 2 ? 1.6f : 1.0f);
     else
         for (float p : { 0.0f, 0.5f, 1.0f }) dot (p, 1.4f);
+
+    if (skin->knobStyle == 1)
+    {
+        // brushed aluminium, a black line for a pointer
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillEllipse (juce::Rectangle<float> (knobR * 2.0f, knobR * 2.0f).withCentre (c.translated (1.0f, 2.0f)));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffe9eaea), c.x - knobR, c.y - knobR, juce::Colour (0xff8b8d8f), c.x + knobR, c.y + knobR, true));
+        g.fillEllipse (juce::Rectangle<float> (knobR * 2.0f, knobR * 2.0f).withCentre (c));
+        g.setColour (juce::Colour (0xff6b6d6f));
+        g.drawEllipse (juce::Rectangle<float> (knobR * 2.0f, knobR * 2.0f).withCentre (c), 0.8f);
+        g.setColour (juce::Colour (0xffc9cbcc));
+        g.fillEllipse (juce::Rectangle<float> (knobR * 1.2f, knobR * 1.2f).withCentre (c));
+        g.setColour (juce::Colour (0xff111111));
+        g.drawLine (juce::Line<float> (c.translated (std::sin (angle) * knobR * 0.2f, -std::cos (angle) * knobR * 0.2f),
+                                       c.translated (std::sin (angle) * knobR * 0.95f, -std::cos (angle) * knobR * 0.95f)), 2.0f);
+        return;
+    }
+    if (skin->knobStyle == 2)
+    {
+        // a grey skirted knob with a coloured cap
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillEllipse (juce::Rectangle<float> (knobR * 2.0f, knobR * 2.0f).withCentre (c.translated (1.0f, 2.0f)));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff5b5e62), c.x - knobR, c.y - knobR, juce::Colour (0xff1d1f21), c.x + knobR, c.y + knobR, true));
+        g.fillEllipse (juce::Rectangle<float> (knobR * 2.0f, knobR * 2.0f).withCentre (c));
+        const auto capColour = cap.isTransparent() ? juce::Colour (0xff7d8186) : cap;
+        g.setGradientFill (juce::ColourGradient (capColour.brighter (0.35f), c.x - knobR * 0.6f, c.y - knobR * 0.6f, capColour.darker (0.3f), c.x + knobR * 0.6f, c.y + knobR * 0.6f, true));
+        g.fillEllipse (juce::Rectangle<float> (knobR * 1.25f, knobR * 1.25f).withCentre (c));
+        g.setColour (juce::Colour (0xfff4f4f2));
+        g.drawLine (juce::Line<float> (c.translated (std::sin (angle) * knobR * 0.3f, -std::cos (angle) * knobR * 0.3f),
+                                       c.translated (std::sin (angle) * knobR * 0.98f, -std::cos (angle) * knobR * 0.98f)), 2.0f);
+        return;
+    }
 
     // black bakelite, with a fluted edge
     g.setColour (juce::Colours::black.withAlpha (0.35f));
@@ -494,6 +608,13 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     addAndMakeVisible (meter);
     addChildComponent (chanVu);
 
+    bandPanel = std::make_unique<BandEqPanel> (engine, index);
+    bandPanel->onChanged = [this] { changed(); };
+    addChildComponent (*bandPanel);
+    dynPanel = std::make_unique<SslDynamicsPanel> (engine, index);
+    dynPanel->onChanged = [this] { changed(); };
+    addChildComponent (*dynPanel);
+
     dbLabel.setJustificationType (juce::Justification::centred);
     dbLabel.setFont (Pequod::heading (12.0f, false));
     addAndMakeVisible (dbLabel);
@@ -501,6 +622,8 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     setDesk (Desk::whitman);
     refreshFromEngine();
 }
+
+ChannelStrip::~ChannelStrip() = default;
 
 void ChannelStrip::setDesk (Desk d)
 {
@@ -514,6 +637,9 @@ void ChannelStrip::setDesk (Desk d)
     presence.setVisible (info.eq == EqStyle::tgMk4);
     presenceFreq.setVisible (info.eq == EqStyle::tgMk4);
     chanVu.setVisible (info.channelVus);
+    if (bandPanel != nullptr) bandPanel->setDesk (d);
+    if (dynPanel != nullptr) { dynPanel->setVisible (info.sslDynamics); dynPanel->setSkin (skin); }
+    echo.setTooltip (juce::String (info.sendName) + " send, after the fader (double-click for off)");
     meter.setVisible (! info.channelVus);
     comp.setVisible (info.hasComp);
     recovery.setVisible (info.hasComp);
@@ -581,6 +707,8 @@ void ChannelStrip::refreshFromEngine()
     comp.setValue (s.compDb.load(), juce::dontSendNotification);
     recovery.setValue (s.recovery.load(), juce::dontSendNotification);
     showCompMode();
+    if (bandPanel != nullptr) bandPanel->refresh();
+    if (dynPanel != nullptr) dynPanel->refresh();
     mute.setToggleState (s.mute.load(), juce::dontSendNotification);
     solo.setToggleState (s.solo.load(), juce::dontSendNotification);
     fader.setValue (s.gainDb.load(), juce::dontSendNotification);
@@ -598,6 +726,7 @@ void ChannelStrip::updateMeter()
     if (d != dimmed) { dimmed = d; repaint(); }
     if (mute.getToggleState() != s.mute.load()) mute.setToggleState (s.mute.load(), juce::dontSendNotification);
     if (solo.getToggleState() != s.solo.load()) solo.setToggleState (s.solo.load(), juce::dontSendNotification);
+    if (dynPanel != nullptr && dynPanel->isVisible()) dynPanel->updateMeters();
     if (comp.isVisible())
     {
         const float gr = s.gainReduction.load();
@@ -671,7 +800,7 @@ void ChannelStrip::paint (juce::Graphics& g)
             const float rs = recoverySeconds ((int) recovery.getValue());
             drawKnobCaption (g, comp, "COMP " + (rs < 1.0f ? juce::String (rs, rs < 0.2f ? 1 : 2).trimCharactersAtStart ("0") : juce::String ((int) rs)) + "s", gr);
         }
-        drawKnobCaption (g, echo, "ECHO", sendText (echo.getValue()));
+        drawKnobCaption (g, echo, deskInfo (desk).sendName, sendText (echo.getValue()));
         drawKnobCaption (g, pan, "PAN", panTxt);
     }
     else
@@ -726,6 +855,25 @@ void ChannelStrip::resized()
             else if (button != nullptr) button->setBounds (row.withSizeKeepingCentre (row.getWidth(), 18));
             else if (small != nullptr)  small->setBounds (row.withSizeKeepingCentre (28, 28));
         };
+        if (bandPanel != nullptr && bandPanel->isVisible())
+        {
+            // the band-EQ desks: smaller knobs, the EQ (and SSL dynamics) in their panels
+            const int kk = 30, gg = 13;
+            auto smallRow = [&] (DeskKnob& knob)
+            {
+                r.removeFromTop (gg);
+                knob.setBounds (r.removeFromTop (kk).withSizeKeepingCentre (kk, kk));
+            };
+            smallRow (input);
+            r.removeFromTop (4);
+            bandPanel->setBounds (r.removeFromTop (bandPanel->preferredHeight()));
+            if (dynPanel->isVisible()) dynPanel->setBounds (r.removeFromTop (dynPanel->preferredHeight()));
+            smallRow (echo);
+            smallRow (pan);
+            r.removeFromTop (8);
+        }
+        else
+        {
         knobRow (input);
         withSide (treble, trebleMode.isVisible() ? &trebleMode : nullptr, nullptr);
         withSide (presence, nullptr, &presenceFreq);
@@ -734,6 +882,7 @@ void ChannelStrip::resized()
         knobRow (echo);
         knobRow (pan);
         r.removeFromTop (8);
+        }
     }
     else
     {
@@ -868,11 +1017,11 @@ void MasterStrip::paint (juce::Graphics& g)
         g.fillRoundedRectangle (plate, 2.0f);
         g.setColour (skin->accent);
         g.setFont (Pequod::heading (17.0f));
-        g.drawText (juce::String ("EMI  ") + info.badge, plate.withTrimmedBottom (12.0f), juce::Justification::centred);
+        g.drawText (isEmi (desk) ? juce::String ("EMI  ") + info.badge : juce::String (info.name).toUpperCase(), plate.withTrimmedBottom (12.0f), juce::Justification::centred);
         g.setFont (Pequod::heading (8.5f, false));
         g.setColour (skin->engravingDim);
         g.setColour (juce::Colour (0xffcfcab8));
-        g.drawText ("ABBEY ROAD  " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + "  STUDIO TWO", plate.withTrimmedTop (21.0f), juce::Justification::centred);
+        g.drawText (juce::String (skin->plateLine).replace ("  -  ", juce::String (juce::CharPointer_UTF8 ("  \xc2\xb7  "))), plate.withTrimmedTop (21.0f), juce::Justification::centred);
 
         g.setFont (Pequod::heading (10.0f));
         g.setColour (skin->engraving);
@@ -887,7 +1036,7 @@ void MasterStrip::paint (juce::Graphics& g)
             g.setFont (Pequod::heading (10.0f, false));
             g.drawText (value, juce::Rectangle<float> (b.getRight() + 4.0f, b.getY(), 50.0f, b.getHeight()), juce::Justification::centredLeft);
         };
-        knobLabel (echoReturn, "ECHO RETURN", sendText (echoReturn.getValue()));
+        knobLabel (echoReturn, juce::String (info.sendName) + " RETURN", sendText (echoReturn.getValue()));
         {
             const float sp = (float) spread.getValue();
             knobLabel (spread, desk == Desk::redd51 ? "SPREADER" : "SPREAD", sp < 0.025f ? juce::String ("MONO") : juce::String (juce::roundToInt (sp * 100.0f)) + "%");
