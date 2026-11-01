@@ -19,6 +19,8 @@ struct MixState
     /** Everything back to unity, centre, EQ flat, no echo, nothing muted or soloed (the desk stays). */
     static void reset (MixEngine& e, juce::StringArray& names);
 
+    /** What older mix files stored for an unnamed strip (its number). Names are now empty
+        when not set here, so the strip can follow Hawthorne's name for the track. */
     static juce::String defaultName (int strip) { return juce::String (strip + 1); }
 };
 

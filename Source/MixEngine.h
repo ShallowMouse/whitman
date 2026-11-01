@@ -94,12 +94,20 @@ public:
         std::atomic<float> trebleDb { 0.0f };       // Pop: 5 kHz bell up / 10 kHz shelf down; Classic: 10 kHz shelf
         std::atomic<bool>  classic  { false };      // treble module
         std::atomic<float> echoDb   { echoMinDb };  // post-fader echo send
+        // TG12345
+        std::atomic<float> presenceDb { 0.0f };     // presence band, at presenceHz (presenceFreq)
+        std::atomic<int>   presenceFreq { 4 };      // 0..7 (2.8 kHz)
+        std::atomic<int>   compMode { 0 };          // CompMode
+        std::atomic<float> compDb { 0.0f };         // how hard: 0..24 dB into the compressor
+        std::atomic<int>   recovery { 2 };          // 0..5 (0.5 s)
+        std::atomic<float> gainReduction { 0.0f };  // dB, for the UI
         std::atomic<float> peak     { 0.0f };       // post-fader, since the UI last took it
 
         // audio thread
         float curL = 0.0f, curR = 0.0f, curIn = 1.0f, curEcho = 0.0f;
-        juce::IIRFilter bass, treble;
-        float setBass = 1000.0f, setTreble = 1000.0f; bool setClassic = false;
+        juce::IIRFilter bass, treble, presence;
+        float setBass = 1000.0f, setTreble = 1000.0f, setPresence = 1000.0f; bool setClassic = false; int setPresFreq = -1;
+        float env = 0.0f;                           // compressor detector (gain-reduction dB)
         float hp = 0.0f, hpIn = 0.0f, lp = 0.0f;
         void resetState() noexcept;
     };
@@ -121,6 +129,7 @@ public:
     std::atomic<int>   desk { (int) Desk::whitman };
     std::atomic<float> masterDb { 0.0f };
     std::atomic<float> echoReturnDb { -6.0f };
+    std::atomic<float> spread { 1.0f };            // TG: stereo width of the mix, 0 (mono) .. 1 (as panned) .. 2 (wide)
     std::atomic<float> masterPeakL { 0.0f }, masterPeakR { 0.0f };
     std::atomic<bool>  masterClipped { false };    // over 0 dBFS since the UI last cleared it
 
@@ -134,7 +143,8 @@ private:
     std::array<Strip, maxStrips> strips;
     Routing routing;
     juce::AudioBuffer<float> mix, scratch;
-    float masterCur = 1.0f, echoRetCur = 0.0f;
+    float masterCur = 1.0f, echoRetCur = 0.0f, spreadCur = 1.0f;
+    Desk deskNow = Desk::whitman;
     double sampleRate = 48000.0;
     int lastDesk = -1;
 
@@ -151,6 +161,8 @@ private:
 
     void deskChanged (Desk d);
     void updateEq (Strip& s, float bassDb, float trebleDb, bool classic) noexcept;
+    void updateTgEq (Strip& s, float bassDb, float trebleDb, float presDb, int presFreq) noexcept;
+    void compress (Strip& s, float* x, int n) noexcept;
     static float onePoleCoef (double hz, double sr) noexcept { return (float) std::exp (-juce::MathConstants<double>::twoPi * hz / sr); }
 
     static void raisePeak (std::atomic<float>& p, float v) noexcept

@@ -66,7 +66,11 @@ void MixEngine::Strip::resetState() noexcept
     curIn = juce::Decibels::decibelsToGain (inputDb.load());
     bass.reset();
     treble.reset();
-    setBass = setTreble = 1000.0f;   // force new coefficients
+    presence.reset();
+    setBass = setTreble = setPresence = 1000.0f;   // force new coefficients
+    setPresFreq = -1;
+    env = 0.0f;
+    gainReduction = 0.0f;
     hp = hpIn = lp = 0.0f;
 }
 
@@ -101,6 +105,7 @@ void MixEngine::prepare (double sr, int maxBlockSize)
 void MixEngine::deskChanged (Desk d)
 {
     const auto& info = deskInfo (d);
+    deskNow = d;
     channelAmp.set (info.channelCeiling > 0.0f ? info.channelCeiling : 1.0f, info.channelAsym);
     mainAmp.set (info.mainCeiling > 0.0f ? info.mainCeiling : 1.0f, info.mainAsym);
     hpCoef = info.lowCutHz > 0.0f ? onePoleCoef (info.lowCutHz, sampleRate) : 1.0f;    // 1 = passes everything
@@ -111,6 +116,58 @@ void MixEngine::deskChanged (Desk d)
     std::fill (preDelay.begin(), preDelay.end(), 0.0f);
     echoHp = echoHpIn = echoLp = 0.0f;
     echoRetCur = 0.0f;
+    spreadCur = info.hasSpread ? spread.load() : 1.0f;
+}
+
+void MixEngine::updateTgEq (Strip& s, float bassDb, float trebleDb, float presDb, int presFreq) noexcept
+{
+    if (bassDb != s.setBass)
+    {
+        s.setBass = bassDb;
+        s.bass.setCoefficients (juce::IIRCoefficients::makeLowShelf (sampleRate, 50.0, 0.6, juce::Decibels::decibelsToGain (bassDb)));
+    }
+    if (trebleDb != s.setTreble)
+    {
+        s.setTreble = trebleDb;
+        // a broad lift / cut centred on 10 kHz
+        s.treble.setCoefficients (juce::IIRCoefficients::makePeakFilter (sampleRate, juce::jmin (10000.0, sampleRate * 0.42), 0.5,
+                                                                         juce::Decibels::decibelsToGain (trebleDb)));
+    }
+    if (presDb != s.setPresence || presFreq != s.setPresFreq)
+    {
+        s.setPresence = presDb;
+        s.setPresFreq = presFreq;
+        s.presence.setCoefficients (juce::IIRCoefficients::makePeakFilter (sampleRate, juce::jmin ((double) presenceHz (presFreq), sampleRate * 0.42), 1.0,
+                                                                           juce::Decibels::decibelsToGain (presDb)));
+    }
+}
+
+void MixEngine::compress (Strip& s, float* x, int n) noexcept
+{
+    // TG channel compressor: feed-forward, a fast fixed attack, switched recovery.
+    // COMP 2:1, LIMIT 8:1. COMPRESS sets how hard it's driven (the threshold comes down
+    // from -6 dBFS), with half the squeeze made up so the level stays roughly where it was.
+    const auto mode = (CompMode) s.compMode.load (std::memory_order_relaxed);
+    if (mode == CompMode::off) { s.env = 0.0f; s.gainReduction.store (0.0f, std::memory_order_relaxed); return; }
+    const float ratio = mode == CompMode::limit ? 8.0f : 2.0f;
+    const float amount = juce::jlimit (0.0f, 24.0f, s.compDb.load (std::memory_order_relaxed));
+    const float threshold = -6.0f - amount;
+    const float slope = 1.0f - 1.0f / ratio;
+    const float makeUp = amount * slope * 0.5f;
+    const float att = std::exp (-1.0f / (0.0015f * (float) sampleRate));
+    const float rel = std::exp (-1.0f / (recoverySeconds (s.recovery.load (std::memory_order_relaxed)) * 0.4f * (float) sampleRate));
+    float env = s.env, most = 0.0f;
+    for (int k = 0; k < n; ++k)
+    {
+        const float a = std::abs (x[k]);
+        const float over = a > 1.0e-6f ? juce::jmax (0.0f, juce::Decibels::gainToDecibels (a) - threshold) : 0.0f;
+        const float want = over * slope;                                 // dB of reduction wanted now
+        env = want > env ? want + att * (env - want) : want + rel * (env - want);
+        x[k] *= juce::Decibels::decibelsToGain (makeUp - env);
+        most = juce::jmax (most, env);
+    }
+    s.env = env;
+    s.gainReduction.store (most, std::memory_order_relaxed);
 }
 
 void MixEngine::updateEq (Strip& s, float bassDb, float trebleDb, bool classic) noexcept
@@ -200,14 +257,24 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
             }
             s.curIn = ti; s.hp = hp; s.hpIn = hpIn; s.lp = lp;
 
-            if (info.hasEq)
+            const float b = s.bassDb.load (std::memory_order_relaxed), t = s.trebleDb.load (std::memory_order_relaxed);
+            if (info.eq == EqStyle::redd)
             {
-                const float b = s.bassDb.load (std::memory_order_relaxed), t = s.trebleDb.load (std::memory_order_relaxed);
                 const bool cl = s.classic.load (std::memory_order_relaxed);
                 updateEq (s, b, t, cl);
                 if (b != 0.0f) s.bass.processSamples (tmp, n);
                 if (t != 0.0f) s.treble.processSamples (tmp, n);
             }
+            else if (info.eq == EqStyle::tg)
+            {
+                const float pr = s.presenceDb.load (std::memory_order_relaxed);
+                updateTgEq (s, b, t, pr, s.presenceFreq.load (std::memory_order_relaxed));
+                if (b != 0.0f)  s.bass.processSamples (tmp, n);
+                if (pr != 0.0f) s.presence.processSamples (tmp, n);
+                if (t != 0.0f)  s.treble.processSamples (tmp, n);
+            }
+            if (info.hasComp)
+                compress (s, tmp, n);
             x = tmp;
         }
 
@@ -269,6 +336,23 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
             mixR[k] += cr[k] * gret;
         }
         echoRetCur = rt;
+    }
+
+    // --- SPREAD (TG): the mix's width, by turning its side (L - R) up or down
+    if (info.hasSpread)
+    {
+        const float st = juce::jlimit (0.0f, 2.0f, spread.load (std::memory_order_relaxed));
+        float sp = spreadCur;
+        const float ds = (st - sp) * inv;
+        if (! (sp == 1.0f && st == 1.0f))
+            for (int k = 0; k < n; ++k)
+            {
+                sp += ds;
+                const float mid = 0.5f * (mixL[k] + mixR[k]), side = 0.5f * (mixL[k] - mixR[k]) * sp;
+                mixL[k] = mid + side;
+                mixR[k] = mid - side;
+            }
+        spreadCur = st;
     }
 
     // --- master fader, then the main amplifiers

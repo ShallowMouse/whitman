@@ -97,6 +97,8 @@ public:
     ChannelStrip (MixEngine& engine, int index, juce::StringArray& names);
 
     void setDesk (Desk d);
+    /** What Hawthorne says about this track (its name; armed to record). */
+    void setHawthorneTrack (const juce::String& name, bool armed);
     void refreshFromEngine();         // after a mix is opened / reset
     void updateMeter();               // UI timer
     void paint (juce::Graphics&) override;
@@ -113,14 +115,20 @@ private:
 
     juce::Label nameLabel;
     DeskKnob input, treble, bass, echo, pan;
-    juce::TextButton trebleMode { "POP" };
+    DeskKnob presence, presenceFreq, comp, recovery;     // TG12345
+    juce::TextButton trebleMode { "POP" }, compMode { "OFF" };
+    float shownGr = 0.0f;
     juce::TextButton mute { "M" }, solo { "S" };
     Fader fader;
     Meter meter { 1 };
     juce::Label dbLabel;
     bool dimmed = false;
+    juce::String hawthorneName;
+    bool hawthorneArmed = false;
 
     void changed() { if (onChanged) onChanged(); }
+    void showName();
+    void showCompMode();
     void drawKnobCaption (juce::Graphics&, const DeskKnob&, const juce::String& title, const juce::String& value);
 };
 
@@ -146,7 +154,7 @@ private:
     Fader fader;
     Meter meter { 2 };
     VUMeter vuL { "LEFT" }, vuR { "RIGHT" };
-    DeskKnob echoReturn;
+    DeskKnob echoReturn, spread;
     juce::Label dbLabel;
     bool clipped = false;
     juce::Rectangle<int> lampArea;

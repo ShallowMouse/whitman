@@ -76,6 +76,8 @@ private:
     void mixChanged();
     void saveSettings();
 
+    void applyHawthorneInfo();   // the strips take Hawthorne's track names and armed lamps
+    juce::String tracksStillInHawthorneMix() const;
     void applyDesk();            // the strips and master follow the engine's desk
     void showDeskPicker();
     void showAudioSettings();

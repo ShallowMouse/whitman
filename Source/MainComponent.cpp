@@ -74,6 +74,7 @@ MainComponent::MainComponent()
     setSize (1360, 820);
     openAudio();
     applyDesk();
+    applyHawthorneInfo();
     refreshAll();
     startTimerHz (30);
 }
@@ -182,6 +183,9 @@ void MainComponent::rebuildStrips()
         auto* s = strips.add (new ChannelStrip (engine, strips.size(), names));
         s->setDesk (engine.getDesk());
         s->onChanged = [this] { mixChanged(); };
+        const int t = strips.size() - 1;
+        if (routeInfo.hasInfo && t < routeInfo.trackNames.size())
+            s->setHawthorneTrack (routeInfo.trackNames[t], routeInfo.armed[(size_t) t]);
         stripHolder.addChildComponent (s);
     }
     for (int i = 0; i < strips.size(); ++i)
@@ -229,18 +233,63 @@ void MainComponent::timerCallback()
     if (saveCountdown > 0 && --saveCountdown == 0 && dirty)
         saveSettings();
 
-    if (++tick % 15 == 0)
+    if (++tick % 8 == 0)
     {
-        enableAllChannels();
-        const auto before = routeInfo;
-        routeInfo = routeStatus.poll();
-        if (before.hawthorneRunning != routeInfo.hawthorneRunning || before.tracks != routeInfo.tracks)
+        if (tick % 16 == 0) enableAllChannels();
+        auto now = routeStatus.poll();
+        if (! now.sameAs (routeInfo))
+        {
+            routeInfo = std::move (now);
+            applyHawthorneInfo();
             repaint (statusArea);
+        }
     }
 }
 
 //==============================================================================
 // Mix files
+
+void MainComponent::applyHawthorneInfo()
+{
+    // track names and armed lamps from Hawthorne (nothing from an older Hawthorne, or when it's not running)
+    bool use = deviceIsRoute.load() && routeInfo.hawthorneRunning && routeInfo.hasInfo;
+    // test hook for screenshots without a sound card: WHITMAN_PREVIEW_HAWTHORNE="Kick,Snare,*Vox" (* = armed)
+    const auto preview = juce::SystemStats::getEnvironmentVariable ("WHITMAN_PREVIEW_HAWTHORNE", {});
+    if (deviceManager.getCurrentAudioDevice() == nullptr && preview.isNotEmpty())
+    {
+        routeInfo = {};
+        for (auto n : juce::StringArray::fromTokens (preview, ",", {}))
+        {
+            routeInfo.armed.push_back (n.startsWith ("*"));
+            routeInfo.toMix.push_back (false);
+            routeInfo.trackNames.add (n.trimCharactersAtStart ("*"));
+        }
+        routeInfo.hasInfo = routeInfo.hawthorneRunning = true;
+        use = true;
+    }
+    for (int t = 0; t < strips.size(); ++t)
+    {
+        const bool has = use && t < routeInfo.trackNames.size();
+        strips[t]->setHawthorneTrack (has ? routeInfo.trackNames[t] : juce::String(), has && routeInfo.armed[(size_t) t]);
+    }
+}
+
+juce::String MainComponent::tracksStillInHawthorneMix() const
+{
+    // tracks that still feed Hawthorne's own master mix: with WHITMAN's mix coming back, they're heard twice
+    if (! (deviceIsRoute.load() && routeInfo.hawthorneRunning && routeInfo.hasInfo)) return {};
+    juce::StringArray list;
+    const int n = (int) routeInfo.toMix.size();
+    for (int t = 0; t < n; ++t)
+    {
+        if (! routeInfo.toMix[(size_t) t]) continue;
+        int end = t;
+        while (end + 1 < n && routeInfo.toMix[(size_t) end + 1]) ++end;
+        list.add (end > t ? juce::String (t + 1) + "-" + juce::String (end + 1) : juce::String (t + 1));
+        t = end;
+    }
+    return list.joinIntoString (", ");
+}
 
 void MainComponent::applyDesk()
 {
@@ -365,7 +414,8 @@ juce::String MainComponent::statusLine (juce::Colour& c) const
         }
        #endif
         c = Pequod::Colours::mustard;
-        return "HAWTHORNE ROUTE" + dot + juce::String (shownStrips.load()) + " TRACKS" + dot + rate
+        const auto reel = routeInfo.hasInfo && routeInfo.reelName.isNotEmpty() ? "REEL: " + routeInfo.reelName.toUpperCase() + dot : juce::String();
+        return "HAWTHORNE ROUTE" + dot + reel + juce::String (shownStrips.load()) + " TRACKS" + dot + rate
                + dot + juce::String (juce::CharPointer_UTF8 ("MIX \xe2\x86\x92 HAWTHORNE MASTER"));
     }
     c = Pequod::Colours::textDim;
@@ -375,7 +425,17 @@ juce::String MainComponent::statusLine (juce::Colour& c) const
 juce::String MainComponent::hintLine() const
 {
     if (deviceIsRoute.load())
+    {
+        if (routeInfo.hawthorneRunning && routeInfo.hasInfo)
+        {
+            const auto twice = tracksStillInHawthorneMix();
+            if (twice.isNotEmpty())
+                return "!! Track" + juce::String (twice.containsAnyOf (",-") ? "s " : " ") + twice
+                       + " still feed Hawthorne's own mix, so you'll hear them twice: switch their MIX off in Hawthorne's ROUTING";
+            return "In Hawthorne's ROUTING the master L / R inputs should come from ROUTE master L / R";
+        }
         return "In Hawthorne's ROUTING: master L / R inputs from ROUTE master L / R, and each track's MIX off (or you'll hear it twice)";
+    }
     return "Hawthorne Route is the ASIO driver Hawthorne installs (Hawthorne > SETTINGS)";
 }
 
@@ -407,8 +467,12 @@ void MainComponent::paint (juce::Graphics& g)
     g.setColour (c);
     g.drawText (status, statusArea.withHeight (statusArea.getHeight() / 2).translated (0, 4), juce::Justification::centredLeft, true);
     g.setFont (Pequod::body (12.0f));
-    g.setColour (Pequod::Colours::textDim);
-    g.drawText (hintLine() + (currentFile.existsAsFile() ? "     [" + currentFile.getFileNameWithoutExtension() + "]" : juce::String()),
+    const auto hint = hintLine();
+    g.setColour (hint.startsWith ("!! ") ? juce::Colour (0xffe0b050) : Pequod::Colours::textDim);
+    const bool warning = hint.startsWith ("!! ");
+    const auto shown = warning ? hint.substring (3)
+                               : hint + (currentFile.existsAsFile() ? "     [" + currentFile.getFileNameWithoutExtension() + "]" : juce::String());
+    g.drawText (shown,
                 statusArea.withTrimmedTop (statusArea.getHeight() / 2).translated (0, -2), juce::Justification::centredLeft, true);
 
     if (shownStrips.load() == 0 || deviceName.isEmpty())

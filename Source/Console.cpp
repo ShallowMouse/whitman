@@ -16,6 +16,14 @@ const DeskSkin& DeskSkin::of (Desk d)
         { C (0xff252825), C (0xff737a73), C (0xff5f665f), C (0xff383d39),
           C (0xfff2eee0), C (0xffd2cfc0), C (0xfff0dfb0), C (0xff1b1d1b),
           true, true, true, 94, 236 },
+        // REDD.37: the same EMI family, an older, browner grey-green
+        { C (0xff262622), C (0xff74776a), C (0xff606355), C (0xff3a3c34),
+          C (0xfff2ecda), C (0xffd4cfba), C (0xfff2d9a0), C (0xff1c1c19),
+          true, true, true, 94, 236 },
+        // TG12345: pale grey modules, black legends, black knobs, straight faders, VUs
+        { C (0xff1f2224), C (0xffaeb3b6), C (0xff989da1), C (0xff5c6266),
+          C (0xff15181a), C (0xff3a4044), C (0xffd8492e), C (0xff15181a),
+          true, false, true, 104, 236 },
     };
     return skins[juce::jlimit (0, numDesks - 1, (int) d)];
 }
@@ -218,7 +226,8 @@ void Fader::paintStraight (juce::Graphics& g)
     {
         const float y = yOf (db);
         const bool unity = db == 0.0;
-        g.setColour (unity ? Pequod::Colours::mustard : Pequod::Colours::textDim.withAlpha (0.6f));
+        g.setColour (unity ? (skin != nullptr ? skin->accent : Pequod::Colours::mustard)
+                           : (skin != nullptr ? skin->engravingDim : Pequod::Colours::textDim.withAlpha (0.6f)));
         g.drawHorizontalLine ((int) y, r.getX(), r.getX() + (unity ? 10.0f : 6.0f));
         g.drawText (db <= faderMinDb ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x9e")) : (db > 0.0 ? "+" : "") + juce::String ((int) std::abs (db)),
                     juce::Rectangle<float> (r.getX() + 10.0f, y - 6.0f, 20.0f, 12.0f), juce::Justification::centredLeft, false);
@@ -386,13 +395,13 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     nameLabel.setEditable (false, true, false);
     nameLabel.setJustificationType (juce::Justification::centred);
     nameLabel.setFont (Pequod::heading (13.0f));
-    nameLabel.setTooltip ("Double-click to name this track");
     nameLabel.onTextChange = [this]
     {
+        // a name typed here wins; clear it (or type Hawthorne's) to follow Hawthorne again
         auto t = nameLabel.getText().trim().substring (0, 24);
-        if (t.isEmpty()) t = juce::String (index + 1);
-        nameLabel.setText (t, juce::dontSendNotification);
+        if (t == juce::String (index + 1) || t == hawthorneName) t = {};
         names.set (index, t);
+        showName();
         changed();
     };
     addAndMakeVisible (nameLabel);
@@ -424,8 +433,40 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     pan.setTooltip ("Pan (double-click to centre)");
     pan.onValueChange = [this] { engine.strip (index).pan = (float) pan.getValue(); repaint(); changed(); };
 
-    for (auto* k : { &input, &treble, &bass, &echo, &pan }) addChildComponent (k);
+    presence.setRange (-10.0, 10.0, 2.0);
+    presence.setDoubleClickReturnValue (true, 0.0);
+    presence.setTooltip ("PRESENCE: a bell at the frequency on the small switch (double-click for flat)");
+    presence.onValueChange = [this] { engine.strip (index).presenceDb = (float) presence.getValue(); repaint(); changed(); };
+
+    presenceFreq.setRange (0.0, numPresenceFreqs - 1, 1.0);
+    presenceFreq.setDoubleClickReturnValue (true, 4.0);
+    presenceFreq.setTooltip ("Presence frequency: 500, 800, 1.2k, 1.8k, 2.8k, 4.2k, 6.8k or 10k");
+    presenceFreq.onValueChange = [this] { engine.strip (index).presenceFreq = (int) presenceFreq.getValue(); repaint(); changed(); };
+
+    comp.setRange (0.0, 24.0, 1.0);
+    comp.setDoubleClickReturnValue (true, 0.0);
+    comp.setTooltip ("COMPRESS: how hard the channel compressor / limiter is driven (with some make-up gain). The figure is the gain reduction now.");
+    comp.onValueChange = [this] { engine.strip (index).compDb = (float) comp.getValue(); repaint(); changed(); };
+
+    recovery.setRange (0.0, numRecoveries - 1, 1.0);
+    recovery.setDoubleClickReturnValue (true, 2.0);
+    recovery.setTooltip ("RECOVERY: how fast it lets go - 0.1, 0.25, 0.5, 1, 2 or 5 seconds");
+    recovery.onValueChange = [this] { engine.strip (index).recovery = (int) recovery.getValue(); repaint(); changed(); };
+
+    for (auto* k : { &input, &treble, &presence, &presenceFreq, &bass, &comp, &recovery, &echo, &pan }) addChildComponent (k);
     pan.setVisible (true);
+
+    compMode.setWantsKeyboardFocus (false);
+    compMode.setTooltip ("The channel's compressor: OFF, COMP (2:1) or LIMIT (8:1)");
+    compMode.onClick = [this]
+    {
+        auto& s = engine.strip (index);
+        s.compMode = (s.compMode.load() + 1) % 3;
+        showCompMode();
+        repaint();
+        changed();
+    };
+    addChildComponent (compMode);
 
     trebleMode.setWantsKeyboardFocus (false);
     trebleMode.setTooltip ("Treble module: POP (5 kHz bell) or CLASSIC (10 kHz shelf)");
@@ -472,11 +513,22 @@ void ChannelStrip::setDesk (Desk d)
     skin = &DeskSkin::of (d);
     const auto& info = deskInfo (d);
     input.setVisible (info.hasGain);
-    treble.setVisible (info.hasEq);
-    bass.setVisible (info.hasEq);
-    trebleMode.setVisible (info.hasEq);
+    treble.setVisible (info.eq != EqStyle::none);
+    bass.setVisible (info.eq != EqStyle::none);
+    trebleMode.setVisible (info.eq == EqStyle::redd);
+    presence.setVisible (info.eq == EqStyle::tg);
+    presenceFreq.setVisible (info.eq == EqStyle::tg);
+    comp.setVisible (info.hasComp);
+    recovery.setVisible (info.hasComp);
+    compMode.setVisible (info.hasComp);
     echo.setVisible (info.hasEcho);
-    for (auto* k : { &input, &treble, &bass, &echo, &pan }) k->setSkin (skin);
+    input.setTooltip (info.channelAsym > 0.2f
+        ? "GAIN into the valve channel amp (double-click for 0). Push it to drive the valves; bring the fader down to match."
+        : "GAIN into the channel amp (double-click for 0). Push it and the transistors get edgy; bring the fader down to match.");
+    bass.setTooltip (info.eq == EqStyle::tg ? "BASS: a 50 Hz shelf (double-click for flat)" : "BASS: a 100 Hz shelf (double-click for flat)");
+    treble.setTooltip (info.eq == EqStyle::tg ? "TREBLE: a broad lift or cut around 10 kHz (double-click for flat)"
+                                              : "TREBLE (double-click for flat). Pop: lift is a bell at 5 kHz, cut a shelf at 10 kHz. Classic: a 10 kHz shelf.");
+    for (auto* k : { &input, &treble, &presence, &presenceFreq, &bass, &comp, &recovery, &echo, &pan }) k->setSkin (skin);
     fader.setSkin (skin);
 
     nameLabel.setColour (juce::Label::backgroundColourId, skin->well);
@@ -485,25 +537,52 @@ void ChannelStrip::setDesk (Desk d)
     dbLabel.setColour (juce::Label::textColourId, skin->engravingDim);
     meter.lowColour = skin->bakeliteKnobs ? juce::Colour (0xffcbbf98) : Pequod::Colours::mustardLo.brighter (0.25f);
     meter.midColour = skin->bakeliteKnobs ? skin->accent : Pequod::Colours::mustard;
-    for (auto* b : { &mute, &solo, &trebleMode })
+    const bool lightPanel = skin->panelTop.getPerceivedBrightness() > 0.6f;
+    for (auto* b : { &mute, &solo, &trebleMode, &compMode })
     {
         b->setColour (juce::TextButton::buttonColourId, skin->bakeliteKnobs ? juce::Colour (0xff2b2d2b) : Pequod::Colours::panelHi);
-        b->setColour (juce::TextButton::textColourOffId, skin->bakeliteKnobs ? skin->engraving : Pequod::Colours::text);
+        b->setColour (juce::TextButton::textColourOffId, skin->bakeliteKnobs ? (lightPanel ? juce::Colour (0xffeceae2) : skin->engraving) : Pequod::Colours::text);
     }
+    nameLabel.setColour (juce::Label::textColourId, skin->bakeliteKnobs ? (lightPanel ? juce::Colour (0xffeceae2) : skin->accent) : Pequod::Colours::text);
+    if (lightPanel) meter.lowColour = juce::Colour (0xff4b5a63), meter.midColour = skin->accent;
     resized();
     repaint();
+}
+
+void ChannelStrip::setHawthorneTrack (const juce::String& name, bool armed)
+{
+    if (name == hawthorneName && armed == hawthorneArmed) return;
+    hawthorneName = name;
+    hawthorneArmed = armed;
+    showName();
+    repaint();
+}
+
+void ChannelStrip::showName()
+{
+    const auto own = names[index];
+    const auto shown = own.isNotEmpty() ? own : (hawthorneName.isNotEmpty() ? hawthorneName : juce::String (index + 1));
+    nameLabel.setText (shown, juce::dontSendNotification);
+    nameLabel.setTooltip (own.isNotEmpty() ? juce::String ("Named here. Double-click to rename; clear it to use the name from Hawthorne.")
+                        : hawthorneName.isNotEmpty() ? juce::String ("Name from Hawthorne. Double-click to rename it here.")
+                                                     : juce::String ("Double-click to name this track (or name it in Hawthorne)"));
 }
 
 void ChannelStrip::refreshFromEngine()
 {
     auto& s = engine.strip (index);
-    nameLabel.setText (names[index].isEmpty() ? juce::String (index + 1) : names[index], juce::dontSendNotification);
+    showName();
     pan.setValue (s.pan.load(), juce::dontSendNotification);
     input.setValue (s.inputDb.load(), juce::dontSendNotification);
     treble.setValue (s.trebleDb.load(), juce::dontSendNotification);
     bass.setValue (s.bassDb.load(), juce::dontSendNotification);
     echo.setValue (s.echoDb.load(), juce::dontSendNotification);
     trebleMode.setButtonText (s.classic.load() ? "CLAS" : "POP");
+    presence.setValue (s.presenceDb.load(), juce::dontSendNotification);
+    presenceFreq.setValue (s.presenceFreq.load(), juce::dontSendNotification);
+    comp.setValue (s.compDb.load(), juce::dontSendNotification);
+    recovery.setValue (s.recovery.load(), juce::dontSendNotification);
+    showCompMode();
     mute.setToggleState (s.mute.load(), juce::dontSendNotification);
     solo.setToggleState (s.solo.load(), juce::dontSendNotification);
     fader.setValue (s.gainDb.load(), juce::dontSendNotification);
@@ -519,6 +598,24 @@ void ChannelStrip::updateMeter()
     if (d != dimmed) { dimmed = d; repaint(); }
     if (mute.getToggleState() != s.mute.load()) mute.setToggleState (s.mute.load(), juce::dontSendNotification);
     if (solo.getToggleState() != s.solo.load()) solo.setToggleState (s.solo.load(), juce::dontSendNotification);
+    if (comp.isVisible())
+    {
+        const float gr = s.gainReduction.load();
+        if (std::abs (gr - shownGr) > 0.4f || (gr < 0.05f) != (shownGr < 0.05f))
+        {
+            shownGr = gr;
+            repaint (comp.getBounds().translated (0, -14).withHeight (14).withX (0).withWidth (getWidth()));
+        }
+    }
+}
+
+void ChannelStrip::showCompMode()
+{
+    const int m = engine.strip (index).compMode.load();
+    compMode.setButtonText (m == 2 ? "LIMIT" : m == 1 ? "COMP" : "OFF");
+    compMode.setToggleState (m != 0, juce::dontSendNotification);
+    compMode.setColour (juce::TextButton::buttonOnColourId, m == 2 ? juce::Colour (0xffd8492e) : juce::Colour (0xffd9a521));
+    compMode.setColour (juce::TextButton::textColourOnId, juce::Colour (0xff111111));
 }
 
 void ChannelStrip::drawKnobCaption (juce::Graphics& g, const DeskKnob& k, const juce::String& title, const juce::String& value)
@@ -546,6 +643,15 @@ void ChannelStrip::paint (juce::Graphics& g)
     g.setFont (Pequod::heading (11.0f));
     g.setColour (skin->engravingDim);
     g.drawText ((skin->bakeliteKnobs ? "CH " : "TRK ") + juce::String (index + 1), r.withTop (12.0f).withHeight (14.0f), juce::Justification::centred);
+    if (hawthorneArmed)
+    {
+        // armed to record in Hawthorne: a red lamp by the number
+        const auto lamp = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ r.getRight() - 11.0f, r.getY() + 19.0f });
+        g.setColour (Pequod::Colours::danger.withAlpha (0.35f));
+        g.fillEllipse (lamp.expanded (2.5f));
+        g.setColour (juce::Colour (0xffe8432f));
+        g.fillEllipse (lamp);
+    }
 
     const float p = (float) pan.getValue();
     const auto panTxt = std::abs (p) < 0.005f ? juce::String ("C") : (p < 0 ? "L" : "R") + juce::String (juce::roundToInt (std::abs (p) * 100.0f));
@@ -553,7 +659,20 @@ void ChannelStrip::paint (juce::Graphics& g)
     {
         drawKnobCaption (g, input, "GAIN", signedDb (input.getValue()));
         drawKnobCaption (g, treble, "TREBLE", signedDb (treble.getValue()));
+        {
+            const float hz = presenceHz ((int) presenceFreq.getValue());
+            const auto f = hz >= 1000.0f ? juce::String (hz / 1000.0f, hz < 10000.0f && std::fmod (hz, 1000.0f) != 0.0f ? 1 : 0) + "k" : juce::String ((int) hz);
+            drawKnobCaption (g, presence, "PRES " + f, signedDb (presence.getValue()));
+        }
         drawKnobCaption (g, bass, "BASS", signedDb (bass.getValue()));
+        if (comp.isVisible())
+        {
+            const auto& st = engine.strip (index);
+            const auto gr = st.compMode.load() != 0 && shownGr >= 0.05f ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")) + juce::String (shownGr, 1)
+                                                                       : juce::String (juce::roundToInt (comp.getValue()));
+            const float rs = recoverySeconds ((int) recovery.getValue());
+            drawKnobCaption (g, comp, "COMP " + (rs < 1.0f ? juce::String (rs, rs < 0.2f ? 1 : 2).trimCharactersAtStart ("0") : juce::String ((int) rs)) + "s", gr);
+        }
         drawKnobCaption (g, echo, "ECHO", sendText (echo.getValue()));
         drawKnobCaption (g, pan, "PAN", panTxt);
     }
@@ -580,23 +699,35 @@ void ChannelStrip::resized()
 
     if (skin->bakeliteKnobs)
     {
-        const int k = 40;
+        const bool many = comp.isVisible();          // the TG has more rows: smaller knobs
+        const int k = many ? 34 : 40, gap = many ? 14 : 16;
         auto knobRow = [&] (DeskKnob& knob)
         {
             if (! knob.isVisible()) return juce::Rectangle<int>();
-            r.removeFromTop (16);
+            r.removeFromTop (gap);
             auto row = r.removeFromTop (k);
             knob.setBounds (row.withSizeKeepingCentre (k, k));
             return row;
         };
-        knobRow (input);
-        auto t = knobRow (treble);
-        if (! t.isEmpty())
+        // a knob with a small switch (or a button) beside it
+        auto withSide = [&] (DeskKnob& knob, juce::Component* button, DeskKnob* small)
         {
-            treble.setBounds (t.removeFromLeft (k + 4).withSizeKeepingCentre (k, k));
-            trebleMode.setBounds (t.withSizeKeepingCentre (t.getWidth(), 18));
-        }
+            auto row = knobRow (knob);
+            if (row.isEmpty()) return;
+            knob.setBounds (row.removeFromLeft (k + 4).withSizeKeepingCentre (k, k));
+            if (button != nullptr && small != nullptr)
+            {
+                button->setBounds (row.removeFromTop (16).reduced (1, 0));
+                small->setBounds (row.withSizeKeepingCentre (24, 24));
+            }
+            else if (button != nullptr) button->setBounds (row.withSizeKeepingCentre (row.getWidth(), 18));
+            else if (small != nullptr)  small->setBounds (row.withSizeKeepingCentre (28, 28));
+        };
+        knobRow (input);
+        withSide (treble, trebleMode.isVisible() ? &trebleMode : nullptr, nullptr);
+        withSide (presence, nullptr, &presenceFreq);
         knobRow (bass);
+        withSide (comp, &compMode, &recovery);
         knobRow (echo);
         knobRow (pan);
         r.removeFromTop (8);
@@ -643,6 +774,12 @@ MasterStrip::MasterStrip (MixEngine& e) : engine (e)
     echoReturn.onValueChange = [this] { engine.echoReturnDb = (float) echoReturn.getValue(); repaint(); if (onChanged) onChanged(); };
     addChildComponent (echoReturn);
 
+    spread.setRange (0.0, 2.0, 0.05);
+    spread.setDoubleClickReturnValue (true, 1.0);
+    spread.setTooltip ("SPREAD: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)");
+    spread.onValueChange = [this] { engine.spread = (float) spread.getValue(); repaint(); if (onChanged) onChanged(); };
+    addChildComponent (spread);
+
     dbLabel.setJustificationType (juce::Justification::centred);
     dbLabel.setFont (Pequod::heading (13.0f));
     addAndMakeVisible (dbLabel);
@@ -660,6 +797,8 @@ void MasterStrip::setDesk (Desk d)
     vuR.setVisible (skin->vuMeters);
     echoReturn.setVisible (info.hasEcho);
     echoReturn.setSkin (skin);
+    spread.setVisible (info.hasSpread);
+    spread.setSkin (skin);
     fader.setSkin (skin);
     dbLabel.setColour (juce::Label::textColourId, skin->bakeliteKnobs ? skin->accent : Pequod::Colours::text);
     resized();
@@ -670,6 +809,7 @@ void MasterStrip::refreshFromEngine()
 {
     fader.setValue (engine.masterDb.load(), juce::dontSendNotification);
     echoReturn.setValue (engine.echoReturnDb.load(), juce::dontSendNotification);
+    spread.setValue (engine.spread.load(), juce::dontSendNotification);
     dbLabel.setText (fader.getTextFromValue (fader.getValue()), juce::dontSendNotification);
     repaint();
 }
@@ -706,17 +846,26 @@ void MasterStrip::paint (juce::Graphics& g)
         g.drawText (juce::String ("EMI  ") + info.badge, plate.withTrimmedBottom (12.0f), juce::Justification::centred);
         g.setFont (Pequod::heading (8.5f, false));
         g.setColour (skin->engravingDim);
+        g.setColour (juce::Colour (0xffcfcab8));
         g.drawText ("ABBEY ROAD  " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + "  STUDIO TWO", plate.withTrimmedTop (21.0f), juce::Justification::centred);
 
         g.setFont (Pequod::heading (10.0f));
         g.setColour (skin->engraving);
-        if (echoReturn.isVisible())
+        auto knobLabel = [&] (const DeskKnob& k, const juce::String& title, const juce::String& value)
         {
-            auto b = echoReturn.getBounds().toFloat();
-            g.drawText ("ECHO RETURN", juce::Rectangle<float> (b.getX() - 70.0f, b.getY(), 66.0f, b.getHeight()), juce::Justification::centredRight);
-            g.setColour (skin->accent);
+            if (! k.isVisible()) return;
+            auto b = k.getBounds().toFloat();
+            g.setFont (Pequod::heading (10.0f));
+            g.setColour (skin->engraving);
+            g.drawText (title, juce::Rectangle<float> (b.getX() - 76.0f, b.getY(), 72.0f, b.getHeight()), juce::Justification::centredRight);
+            g.setColour (skin->panelTop.getPerceivedBrightness() > 0.6f ? skin->engraving : skin->accent);
             g.setFont (Pequod::heading (10.0f, false));
-            g.drawText (sendText (echoReturn.getValue()), juce::Rectangle<float> (b.getRight() + 4.0f, b.getY(), 50.0f, b.getHeight()), juce::Justification::centredLeft);
+            g.drawText (value, juce::Rectangle<float> (b.getRight() + 4.0f, b.getY(), 50.0f, b.getHeight()), juce::Justification::centredLeft);
+        };
+        knobLabel (echoReturn, "ECHO RETURN", sendText (echoReturn.getValue()));
+        {
+            const float sp = (float) spread.getValue();
+            knobLabel (spread, "SPREAD", sp < 0.025f ? juce::String ("MONO") : juce::String (juce::roundToInt (sp * 100.0f)) + "%");
         }
         g.setFont (Pequod::heading (11.0f));
         g.setColour (skin->engraving);
@@ -758,7 +907,12 @@ void MasterStrip::resized()
         r.removeFromTop (10);
         if (echoReturn.isVisible())
             echoReturn.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
-        lampArea = {};      // the main valves round off before full scale: nothing to clip
+        if (spread.isVisible())
+        {
+            r.removeFromTop (4);
+            spread.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
+        }
+        lampArea = {};      // the main amps round off just before full scale: nothing to clip
         r.removeFromTop (30);
         r.removeFromBottom (14);
         dbLabel.setBounds (r.removeFromBottom (22));

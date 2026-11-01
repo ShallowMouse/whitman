@@ -226,10 +226,10 @@ static float sineGainDb (Desk d, float freq, std::function<void (MixEngine&)> se
 }
 
 /** Level of harmonic h relative to the fundamental (dB), via Goertzel on the left output. */
-static float harmonicDb (float inputDb, int h, float levelDbfs = nominalDbfs)
+static float harmonicDb (float inputDb, int h, float levelDbfs = nominalDbfs, Desk desk = Desk::redd51)
 {
     Rig r (8, 480);
-    r.engine.desk = (int) Desk::redd51;
+    r.engine.desk = (int) desk;
     r.engine.strip (0).pan = -1.0f;
     r.engine.strip (0).inputDb = inputDb;
     r.engine.strip (0).gainDb = -inputDb;      // fader back down, so the main amps stay clean
@@ -355,6 +355,105 @@ static void testRedd()
 }
 
 //==============================================================================
+// The REDD.37 and the TG12345
+static void testRedd37AndTg()
+{
+    auto none = [] (MixEngine&) {};
+    { const float g = sineGainDb (Desk::redd37, 1000.0f, none);
+      check (std::abs (g) < 0.6f, "REDD.37 flat at 1 kHz at 0 VU: " + juce::String (g, 2) + " dB"); }
+
+    { const float r37 = harmonicDb (12.0f, 2, nominalDbfs, Desk::redd37), r51 = harmonicDb (12.0f, 2, nominalDbfs, Desk::redd51);
+      check (r37 > r51 + 3.0f, "REDD.37's V72s break up sooner than the REDD.51 (2nd harmonic at GAIN +12: "
+             + juce::String (r37, 1) + " vs " + juce::String (r51, 1) + " dB)"); }
+
+    { const float top37 = sineGainDb (Desk::redd37, 14000.0f, none), top51 = sineGainDb (Desk::redd51, 14000.0f, none);
+      check (top37 < top51 - 1.0f, "REDD.37 has the darker top (" + juce::String (top37, 1) + " vs " + juce::String (top51, 1) + " dB at 14 kHz)"); }
+
+    const auto T = Desk::tg12345;
+    { const float g = sineGainDb (T, 1000.0f, none);
+      check (std::abs (g) < 0.5f, "TG12345 flat at 1 kHz at 0 VU: " + juce::String (g, 2) + " dB"); }
+
+    { const float lo = sineGainDb (T, 20.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; });
+      const float at100 = sineGainDb (T, 200.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; });
+      check (lo > 6.5f && at100 < 3.0f, "TG BASS +10: a 50 Hz shelf (" + juce::String (lo, 1) + " dB at 20 Hz, " + juce::String (at100, 1) + " at 200 Hz)"); }
+
+    { bool ok = true; juce::String worst;
+      for (int i = 0; i < numPresenceFreqs; ++i)
+      {
+          const float f = presenceHz (i);
+          const float on = sineGainDb (T, f, [i] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = i; });
+          const float off = sineGainDb (T, f * (f < 3000.0f ? 4.0f : 0.25f), [i] (MixEngine& e) { e.strip (0).presenceDb = 10.0f; e.strip (0).presenceFreq = i; });
+          if (! (on > 8.0f && off < on - 4.0f)) { ok = false; worst << juce::String (f) << " Hz: " << juce::String (on, 1) << " / " << juce::String (off, 1) << "  "; }
+      }
+      check (ok, "TG PRESENCE +10 peaks at each of its 8 frequencies " + worst); }
+
+    { const float top = sineGainDb (T, 10000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = -10.0f; });
+      check (top < -8.0f, "TG TREBLE -10 at 10 kHz: " + juce::String (top, 1) + " dB"); }
+
+    // compressor: steady tone well over the threshold. Above it the output rises 1 dB per 2 (COMP) or 8 (LIMIT).
+    auto slope = [T] (int mode)
+    {
+        auto at = [&] (float levelDbfs)
+        {
+            return sineGainDb (T, 1000.0f, [mode] (MixEngine& e) { e.strip (0).compMode = mode; e.strip (0).compDb = 12.0f; e.strip (0).recovery = 0; },
+                               levelDbfs) + levelDbfs;
+        };
+        const float a = at (-12.0f), b = at (-4.0f);
+        return (b - a) / 8.0f;
+    };
+    { const float c = slope (1), l = slope (2);
+      check (c > 0.4f && c < 0.65f, "TG COMP is about 2:1 (output slope " + juce::String (c, 2) + ")");
+      check (l > 0.06f && l < 0.22f, "TG LIMIT is about 8:1 (output slope " + juce::String (l, 2) + ")"); }
+
+    { const float off = sineGainDb (T, 1000.0f, [] (MixEngine& e) { e.strip (0).compMode = 1; e.strip (0).compDb = 0.0f; });
+      check (std::abs (off) < 0.6f, "TG COMP at 0 leaves a 0 VU signal alone (" + juce::String (off, 2) + " dB)"); }
+
+    { // recovery: after a loud burst, how much gain reduction is left 0.3 s later - more on the slower settings
+      auto leftAfter = [T] (int rec)
+      {
+          Rig r (8, 480);
+          r.engine.desk = (int) T;
+          r.engine.strip (0).compMode = 2; r.engine.strip (0).compDb = 12.0f; r.engine.strip (0).recovery = rec;
+          r.dc (0, 0.7f); r.run (20);
+          r.dc (0, 0.001f); r.run (30);
+          return r.engine.strip (0).gainReduction.load();
+      };
+      const float fast = leftAfter (0), slow = leftAfter (5);
+      check (fast < 1.0f && slow > 5.0f, "TG RECOVERY: 0.1 s has let go after 0.3 s (" + juce::String (fast, 1) + " dB), 5 s hasn't ("
+             + juce::String (slow, 1) + " dB)"); }
+
+    { // spread on a tone panned hard left: 0 = mono (R follows L), 1 = as panned (R silent), 2 = wider (R opposite L)
+      auto rOverL = [T] (float sp)
+      {
+          Rig r (8, 480); r.engine.desk = (int) T; r.engine.spread = sp;
+          r.engine.strip (0).pan = -1.0f;
+          double ph = 0.0, lr = 0.0, ll = 0.0;
+          for (int b = 0; b < 20; ++b)
+          {
+              for (int k = 0; k < 480; ++k) { r.in.setSample (0, k, 0.1f * (float) std::sin (ph)); ph += 0.13; }
+              r.run (1);
+              if (b >= 10) for (int k = 0; k < 480; ++k) { lr += (double) r.L (k) * r.R (k); ll += (double) r.L (k) * r.L (k); }
+          }
+          return (float) (lr / ll);
+      };
+      const float mono = rOverL (0.0f), normal = rOverL (1.0f), wide = rOverL (2.0f);
+      check (std::abs (mono - 1.0f) < 0.02f && std::abs (normal) < 0.01f && wide < -0.3f,
+             "TG SPREAD: 0 is mono, 1 is as panned, 2 is wider (R/L " + juce::String (mono, 2) + " / " + juce::String (normal, 2)
+             + " / " + juce::String (wide, 2) + ")"); }
+
+    { MixEngine a, b; juce::StringArray na, nb;
+      MixState::reset (a, na);
+      a.desk = (int) T; a.spread = 0.6f;
+      a.strip (3).presenceDb = 4.0f; a.strip (3).presenceFreq = 6; a.strip (3).compMode = 2; a.strip (3).compDb = 9.0f; a.strip (3).recovery = 4;
+      auto x = juce::parseXML (MixState::toXml (a, na)->toString());
+      const bool ok = x != nullptr && MixState::fromXml (*x, b, nb);
+      check (ok && b.getDesk() == T && approx (b.spread.load(), 0.6f) && approx (b.strip (3).presenceDb.load(), 4.0f)
+               && b.strip (3).presenceFreq.load() == 6 && b.strip (3).compMode.load() == 2 && approx (b.strip (3).compDb.load(), 9.0f)
+               && b.strip (3).recovery.load() == 4,
+             "Mix file keeps the TG's presence, compressor and spread"); }
+}
+
+//==============================================================================
 static void testMixFiles()
 {
     MixEngine a, b;
@@ -369,9 +468,17 @@ static void testMixFiles()
     MixState::reset (b, nb);
     const bool ok = parsed != nullptr && MixState::fromXml (*parsed, b, nb);
     check (ok && approx (b.strip (4).gainDb.load(), -7.5f) && approx (b.strip (4).pan.load(), 0.3f) && b.strip (4).mute.load()
-               && b.strip (40).solo.load() && nb[4] == "Kick" && nb[5] == "6" && approx (b.masterDb.load(), -2.0f),
+               && b.strip (40).solo.load() && nb[4] == "Kick" && nb[5].isEmpty() && approx (b.masterDb.load(), -2.0f),
            "Mix file round trip");
     check (x->getNumChildElements() == 2, "Mix file keeps only strips that changed");
+
+    {
+        // older mix files stored an unnamed strip as its number: it now follows Hawthorne instead
+        auto old = juce::parseXML ("<WHITMAN_MIX version=\"1\"><STRIP index=\"2\" name=\"3\" gain=\"-4\"/></WHITMAN_MIX>");
+        MixEngine c; juce::StringArray nc;
+        check (old != nullptr && MixState::fromXml (*old, c, nc) && nc[2].isEmpty() && approx (c.strip (2).gainDb.load(), -4.0f),
+               "Old mix files: a strip named by its number counts as unnamed");
+    }
 
     juce::XmlElement wrong ("SOMETHING_ELSE");
     check (! MixState::fromXml (wrong, b, nb) && b.strip (4).mute.load(), "Not a mix file: left alone");
@@ -398,6 +505,45 @@ static void testRouteStatus()
     RouteStatus s;
     auto i = s.poll();
     check (i.hawthorneRunning && i.tracks == 32 && i.sampleRate == 48000, "Route status: reads Hawthorne's rate and track count");
+    // Hawthorne's reel and track info (as Hawthorne's RouteHost::publishInfo writes it)
+    {
+        auto im = CreateFileMappingW (INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, (DWORD) sizeof (hawthorne::route::Info), infoMappingName);
+        auto* inf = im != nullptr ? (hawthorne::route::Info*) MapViewOfFile (im, FILE_MAP_ALL_ACCESS, 0, 0, sizeof (hawthorne::route::Info)) : nullptr;
+        check (inf != nullptr, "Route info: test mapping made");
+        if (inf != nullptr)
+        {
+            shared->heartbeatMs = (std::int64_t) GetTickCount64();
+            RouteStatus rs;
+            auto before = rs.poll();
+            check (before.hawthorneRunning && ! before.hasInfo, "Route info: none until Hawthorne writes it (an older Hawthorne)");
+
+            inf->magic = infoMagic; inf->version = infoVersion;
+            inf->seq = 0;
+            inf->seq.fetch_add (1);
+            inf->numTracks = 32;
+            juce::String ("Penny Lane take 7").copyToUTF8 (inf->reelName, sizeof (inf->reelName) - 1);
+            juce::String ("Kick").copyToUTF8 (inf->trackNames[0], infoNameBytes - 1);
+            juce::String (juce::CharPointer_UTF8 ("Vox caf\xc3\xa9")).copyToUTF8 (inf->trackNames[4], infoNameBytes - 1);
+            inf->armed[4] = 1;
+            for (int t = 0; t < 4; ++t) inf->toMix[t] = 1;
+            inf->seq.fetch_add (1);
+            shared->heartbeatMs = (std::int64_t) GetTickCount64();
+            auto i2 = rs.poll();
+            check (i2.hasInfo && i2.reelName == "Penny Lane take 7" && i2.trackNames.size() == 32 && i2.trackNames[0] == "Kick"
+                       && i2.trackNames[4] == juce::String (juce::CharPointer_UTF8 ("Vox caf\xc3\xa9")) && i2.trackNames[1].isEmpty()
+                       && i2.armed[4] && ! i2.armed[0] && i2.toMix[3] && ! i2.toMix[4],
+                   "Route info: reel name, track names (UTF-8), armed and mix feeds read back");
+
+            inf->seq.fetch_add (1);   // Hawthorne mid-write: keep what we had rather than read half a change
+            juce::String ("Snare").copyToUTF8 (inf->trackNames[0], infoNameBytes - 1);
+            shared->heartbeatMs = (std::int64_t) GetTickCount64();
+            auto i3 = rs.poll();
+            check (! i3.hasInfo, "Route info: never read while Hawthorne is writing it");
+            inf->seq.fetch_add (1);
+            UnmapViewOfFile (inf);
+        }
+        if (im != nullptr) CloseHandle (im);
+    }
     shared->heartbeatMs = (std::int64_t) GetTickCount64() - 5000;
     i = s.poll();
     check (! i.hawthorneRunning, "Route status: a stale heartbeat means Hawthorne stopped");
@@ -411,6 +557,7 @@ int main()
     testRouting();
     testMix();
     testRedd();
+    testRedd37AndTg();
     testMixFiles();
     testRouteStatus();
     std::printf ("\n%d checks, %d failed\n", checks, failures);

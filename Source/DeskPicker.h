@@ -30,7 +30,7 @@ public:
     {
         int y = 40;
         // oldest first, the clean desk last
-        for (auto d : { Desk::redd51, Desk::whitman })
+        for (auto d : { Desk::redd37, Desk::redd51, Desk::tg12345, Desk::whitman })
             for (auto* c : cards)
                 if (c->desk == d) { c->setBounds (10, y, getWidth() - 20, 224); y += 236; }
     }
