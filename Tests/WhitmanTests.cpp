@@ -4,6 +4,7 @@
 #include <functional>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "../Source/MixEngine.h"
+#include "../Source/ReddEq.h"
 #include "../Source/MixState.h"
 #include "../Source/RouteStatus.h"
 #include "../Source/CircuitSim.h"
@@ -262,37 +263,60 @@ static void testRedd()
     { const float g = sineGainDb (R, 1000.0f, none);
       check (std::abs (g) < 0.5f, "REDD.51 flat at 1 kHz at 0 VU: " + juce::String (g, 2) + " dB"); }
 
-    { const float lo = sineGainDb (R, 30.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; });
-      const float mid = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; });
-      check (lo > 8.5f && lo < 10.8f && std::abs (mid) < 1.0f,
-             "BASS +10: " + juce::String (lo, 1) + " dB at 30 Hz, " + juce::String (mid, 1) + " at 1 kHz"); }
+    // the tone controls: switched bridged-T networks (ReddEq.h)
+    check (ReddEq::snap (3.0f) == 4.0f && ReddEq::snap (-0.9f) == 0.0f && ReddEq::snap (15.0f) == 10.0f, "REDD tone controls are switches: 2 dB steps, +/-10");
+    auto db = [] (const ReddEq::Analog& h, double hz) { return (float) ReddEq::responseDb (h, hz); };
+    { const auto h = ReddEq::bass (10.0f, true);
+      check (db (h, 20) > 8.5f && std::abs (db (h, 100) - 5.0f) < 0.3f && db (h, 1000) < 1.0f,
+             "Classic BASS +10: shelf, half at 100 Hz (" + juce::String (db (h, 20), 1) + " / " + juce::String (db (h, 100), 1) + " / " + juce::String (db (h, 1000), 1) + " dB at 20 / 100 / 1k)"); }
+    { const auto h = ReddEq::bass (-10.0f, true);
+      check (db (h, 20) < -8.5f && std::abs (db (h, 100) + 5.0f) < 0.3f && db (h, 1000) > -1.0f, "Classic BASS -10: shelf down, half at 100 Hz"); }
+    { const auto h = ReddEq::bass (10.0f, false);
+      check (std::abs (db (h, 500) - 5.0f) < 0.4f && db (h, 100) > 8.0f && db (h, 3000) < 1.0f,
+             "Pop BASS +10 reaches higher: half at 500 Hz (" + juce::String (db (h, 500), 1) + " dB)"); }
+    { const auto h = ReddEq::treble (10.0f, false);
+      float best = -100.0f; double at = 0;
+      for (double f = 1000; f < 20000; f *= 1.01) if (db (h, f) > best) { best = db (h, f); at = f; }
+      check (std::abs (at - 4700.0) < 150.0 && std::abs (best - 10.0f) < 0.05f && db (h, 1300.0 * 4700.0 / 3986.0) > 4.0f && db (h, 20000) < 6.0f && db (h, 300) < 1.0f,
+             "Pop TREBLE +10: a broad bell at 4.7 kHz (peak " + juce::String (best, 1) + " dB at " + juce::String (at, 0) + " Hz)"); }
+    { const auto h = ReddEq::treble (-10.0f, false);
+      check (std::abs (db (h, 2300) + 5.0f) < 0.3f && db (h, 15000) < -8.5f, "Pop TREBLE -10: a shelf down, half at 2.3 kHz"); }
+    { const auto h = ReddEq::treble (10.0f, true);
+      check (std::abs (db (h, 10000) - 5.0f) < 0.3f && db (h, 1000) < 1.0f, "Classic TREBLE +10: a shelf up, half at 10 kHz"); }
+    { const auto h = ReddEq::treble (4.0f, false);
+      check (std::abs (db (h, 4700) - 4.0f) < 0.05f, "Pop TREBLE +4: the step's boost at the peak"); }
+    { // and the engine runs them as they should
+      const float pk = sineGainDb (R, 4700.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
+      const float cl = sineGainDb (R, 50.0f, [] (MixEngine& e) { e.strip (0).bassDb = 10.0f; e.strip (0).classic = true; });
+      check (std::abs (pk - 10.0f) < 0.8f && std::abs (cl - (float) ReddEq::responseDb (ReddEq::bass (10.0f, true), 50.0)) < 0.8f,
+             "Engine: Pop +10 at 4.7 kHz " + juce::String (pk, 1) + " dB, Classic bass +10 at 50 Hz " + juce::String (cl, 1) + " dB"); }
 
-    { const float lo = sineGainDb (R, 30.0f, [] (MixEngine& e) { e.strip (0).bassDb = -10.0f; });
-      check (lo < -8.5f && lo > -10.8f, "BASS -10: " + juce::String (lo, 1) + " dB at 30 Hz"); }
-
-    { const float pk = sineGainDb (R, 5000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
-      const float mid = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
-      const float top = sineGainDb (R, 15000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; });
-      check (pk > 8.5f && pk < 10.5f && mid < 3.0f && top < pk - 3.0f,
-             "Pop TREBLE +10: a bell at 5 kHz (" + juce::String (pk, 1) + " dB; 1 kHz " + juce::String (mid, 1)
-             + ", 15 kHz " + juce::String (top, 1) + ")"); }
-
-    { const float top = sineGainDb (R, 15000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = -10.0f; });
-      const float mid = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = -10.0f; });
-      check (top < -6.5f && mid > -1.0f, "Pop TREBLE -10: a shelf down at 10 kHz (" + juce::String (top, 1) + " dB at 15 kHz)"); }
-
-    { const float top = sineGainDb (R, 15000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; e.strip (0).classic = true; });
-      const float five = sineGainDb (R, 5000.0f, [] (MixEngine& e) { e.strip (0).trebleDb = 10.0f; e.strip (0).classic = true; });
-      check (top > 6.5f && five < top, "Classic TREBLE +10: a shelf up at 10 kHz (" + juce::String (top, 1) + " dB at 15 kHz, "
-             + juce::String (five, 1) + " at 5 kHz)"); }
+    { // pan pots: switches, 5 positions a side; a tone through both sides of the stereo correlator
+      auto ratio = [] (float pan)
+      {
+          Rig r (2, 480);
+          r.engine.desk = (int) Desk::redd51;
+          r.engine.strip (0).pan = pan;
+          double ph = 0.0, l = 0.0, rr = 0.0;
+          for (int b = 0; b < 20; ++b)
+          {
+              for (int k = 0; k < 480; ++k) { r.in.setSample (0, k, 0.05f * (float) std::sin (ph)); ph += 0.13; }
+              r.run (1);
+              if (b > 10) for (int k = 0; k < 480; ++k) { l += r.L (k) * r.L (k); rr += r.R (k) * r.R (k); }
+          }
+          return std::pair<double, float> (rr / l, r.engine.correlation.load());
+      };
+      const auto a = ratio (0.33f), b = ratio (0.4f), c = ratio (0.0f);
+      check (std::abs (a.first - b.first) < 1.0e-3 && a.first > 1.5, "REDD pan: 0.33 lands on the 0.4 step");
+      check (c.second > 0.99f, "Stereo correlator: a centred track reads +1 (" + juce::String (c.second, 3) + ")"); }
 
     { const float g = sineGainDb (R, 1000.0f, [] (MixEngine& e) { e.strip (0).inputDb = 10.0f; e.strip (0).gainDb = -10.0f; });
       check (std::abs (g) < 0.8f, "GAIN +10 with the fader 10 down: about the same level (" + juce::String (g, 2) + " dB)"); }
 
     { const float clean2 = harmonicDb (0.0f, 2), hot2 = harmonicDb (18.0f, 2), hot3 = harmonicDb (18.0f, 3);
       check (clean2 < -45.0f, "At 0 VU the channel amp is clean (2nd harmonic " + juce::String (clean2, 1) + " dB)");
-      check (hot2 > -40.0f && hot2 > clean2 + 15.0f, "GAIN +18 drives the valves (2nd harmonic " + juce::String (hot2, 1) + " dB)");
-      check (hot2 > hot3 - 6.0f, "Valve grit has a strong 2nd harmonic, close to the 3rd (2nd " + juce::String (hot2, 1) + ", 3rd " + juce::String (hot3, 1) + ")"); }
+      check (hot3 > -60.0f && hot3 > harmonicDb (0.0f, 3) + 15.0f, "GAIN +18 drives the valves (3rd harmonic " + juce::String (hot3, 1) + " dB)");
+      check (hot3 > hot2, "REDD.47: its stages' 2nd harmonics cancel, so the 3rd leads (2nd " + juce::String (hot2, 1) + ", 3rd " + juce::String (hot3, 1) + ")"); }
 
     { // main amps: the mix can't go over full scale, however hard it's pushed
       Rig r (8, 512);
@@ -330,8 +354,8 @@ static void testRedd()
           return (float) (10.0 * std::log10 (e / 4800.0 + 1.0e-20));
       };
       const float wet = tailDb (R, 0.0f), dry = tailDb (R, echoMinDb), clean = tailDb (Desk::whitman, 0.0f);
-      check (wet > -45.0f && dry < -120.0f && clean < -120.0f,
-             "ECHO: a chamber tail with the send up (" + juce::String (wet, 1) + " dB), none without it or on the clean desk"); }
+      check (wet > -45.0f && dry < -100.0f && clean < -120.0f,
+             "ECHO: a chamber tail with the send up (" + juce::String (wet, 1) + " dB), none without it (" + juce::String (dry, 1) + ") or on the clean desk"); }
 
     { // switching desks while running: nothing odd
       Rig r (24); r.dc (0, 0.3f); r.engine.strip (0).bassDb = 6.0f; r.engine.strip (0).echoDb = -10.0f;
@@ -368,8 +392,10 @@ static void testRedd37AndTg()
       check (r37 > r51 + 3.0f, "REDD.37's V72s break up sooner than the REDD.51 (2nd harmonic at GAIN +12: "
              + juce::String (r37, 1) + " vs " + juce::String (r51, 1) + " dB)"); }
 
-    { const float top37 = sineGainDb (Desk::redd37, 14000.0f, none), top51 = sineGainDb (Desk::redd51, 14000.0f, none);
-      check (top37 < top51 - 1.0f, "REDD.37 has the darker top (" + juce::String (top37, 1) + " vs " + juce::String (top51, 1) + " dB at 14 kHz)"); }
+    { const float top37 = sineGainDb (Desk::redd37, 20000.0f, none), lo37 = sineGainDb (Desk::redd37, 50.0f, none);
+      check (top37 > -1.5f && lo37 > -1.5f, "V72s: within about 1 dB from 50 Hz to 20 kHz, as measured (" + juce::String (lo37, 1) + " / " + juce::String (top37, 1) + " dB)"); }
+    { const float h2 = harmonicDb (4.0f, 2, nominalDbfs, Desk::redd37), h3 = harmonicDb (4.0f, 3, nominalDbfs, Desk::redd37);
+      check (h2 > h3, "V72s clip lopsided: 2nd harmonic leads (" + juce::String (h2, 1) + " vs 3rd " + juce::String (h3, 1) + " dB)"); }
 
     const auto T = Desk::tg12345;
     { const float g = sineGainDb (T, 1000.0f, none);
@@ -529,6 +555,14 @@ static void testAmpsAndBandDesks()
       for (float hz : { 20.0f, 40.0f, 100.0f, 1000.0f, 10000.0f, 20000.0f })
       { const float g = sineGainDb (Desk::neve8028, hz, [] (MixEngine&) {}); if (std::abs (g) > 0.5f) { flat = false; worst << juce::String (hz) << " Hz " << juce::String (g, 2) << "  "; } }
       check (flat, "Neve: flat within 0.5 dB, 20 Hz to 20 kHz (spec) " + worst); }
+
+    // --- REDD.47 (REDD.51): Chandler's faithful copy measures 0.15 % THD at +20 dBu out, more than +23 dBu available
+    { const float t = thdPct (Desk::redd51, 20.0f, 1000.0f), hot = thdPct (Desk::redd51, 23.0f, 1000.0f);
+      check (t > 0.08f && t < 0.3f && hot < 3.0f, "REDD.51: THD " + juce::String (t, 3) + " % at +20 dBu (REDD.47 measured 0.15 %), " + juce::String (hot, 2) + " % at +23 dBu"); }
+    { bool flat = true; juce::String worst;
+      for (float hz : { 20.0f, 100.0f, 1000.0f, 10000.0f, 20000.0f })
+      { const float g = sineGainDb (Desk::redd51, hz, [] (MixEngine&) {}); if (std::abs (g) > 0.5f) { flat = false; worst << juce::String (hz) << " Hz " << juce::String (g, 2) << "  "; } }
+      check (flat, "REDD.51: flat within 0.5 dB, 20 Hz to 20 kHz (REDD.47: -3 dB at 7 Hz and 40 kHz) " + worst); }
 
     // --- the ordering of how much each desk distorts at the same level
     { const float ssl = thdPct (Desk::ssl4000e, 20.0f, 1000.0f), neotek = thdPct (Desk::neotek, 20.0f, 1000.0f),

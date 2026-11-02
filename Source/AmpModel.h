@@ -21,6 +21,8 @@ inline float dbuToPeak (float dbu) noexcept { return std::pow (10.0f, (dbu - 22.
       with flux - so it rises as the frequency falls (lfHz sets where)
     - asym: how much sooner the positive half clips
     - lowCutHz / highCutHz: its bandwidth (0 = beyond the audio band)
+    - h3Pct at refDbu: third harmonic at any frequency (the stage's own curvature, where its
+      second harmonic cancels)
     clipDbu 0 = no amp at all (the clean desk). */
 struct AmpSpec
 {
@@ -28,6 +30,7 @@ struct AmpSpec
     float refDbu = 20.0f, h2Pct = 0.0f, lfH3Pct = 0.0f, lfHz = 30.0f;
     float asym = 0.0f;
     float lowCutHz = 0.0f, highCutHz = 0.0f;
+    float h3Pct = 0.0f;        // third harmonic at refDbu across the band (a balanced or push-pull stage, feedback)
 };
 
 /*  What each figure rests on. Only the Neve has published distortion figures; the rest are estimates
@@ -41,8 +44,16 @@ struct AmpSpec
       +0/-0.3 dB. Op-amps, no transformers in the channel: a hard knee, almost no distortion before it.
     - Neotek: 'very low distortion' (Electrical Audio), transformerless: as the SSL, estimated.
     - Trident A-Range: discrete class A with transformers: estimated between the Neve and the SSL.
-    - EMI REDD.47 (REDD.51) and V72 (REDD.37): valve; the REDD.47 had more headroom and less distortion
-      than the V72 (Waves / Abbey Road, Chandler): estimated, the V72 clipping lower and lopsided.
+    - EMI REDD.47 (REDD.51's channel, inter and line amps): EF86 pentode into a paralleled E88CC with
+      negative feedback; its two stages' second harmonics cancel, leaving mostly the third (Phaedrus Audio,
+      from EMI's description); 34 / 40 / 46 dB gain; -3 dB at 7 Hz and 40 kHz, 0.15 % THD at +20 dBu out
+      and more than +23 dBu available (Sound On Sound's measurements of Chandler's faithful REDD.47).
+      Modelled per stage: third 0.07 % and second 0.02 % at +20 dBu, rounding off from +22 into a +24.5 dBu
+      clip; a channel through the desk (its amp, then the mix amps) measures about 0.15 %.
+    - Siemens V72 / V72S (the REDD.37's 31 amps): two EF804 pentodes, 34 dB (V72S 40 dB), within 1 dB from
+      50 Hz to 20 kHz (tube-workshop.de's measurements), lopsided (asymmetric) clipping when pushed,
+      'laid back' beside the REDD.47 (SOS). No published THD or maximum output: those are estimates, lower
+      headroom than the REDD.47 and second-harmonic led.
     - EMI TG12345: solid-state, transistor: estimated.  */
 inline AmpSpec ampSpecOf (Desk d, bool main)
 {
@@ -51,12 +62,11 @@ inline AmpSpec ampSpecOf (Desk d, bool main)
     {
         case Desk::whitman: break;
         case Desk::redd37:
-            a = main ? AmpSpec { 20.0f, 0.40f, 4.0f, 0.20f, 0.0f, 30.0f, 0.15f, 12.0f, 0.0f }
-                     : AmpSpec { 16.0f, 0.30f, 4.0f, 0.40f, 0.0f, 30.0f, 0.25f, 12.0f, 12000.0f };
+            a = main ? AmpSpec { 20.0f, 0.55f, 4.0f, 0.20f, 0.0f, 30.0f, 0.40f, 18.0f, 0.0f }
+                     : AmpSpec { 16.0f, 0.50f, 4.0f, 0.40f, 0.0f, 30.0f, 0.40f, 18.0f, 0.0f };
             break;
         case Desk::redd51:
-            a = main ? AmpSpec { 24.0f, 0.45f, 4.0f, 0.10f, 0.0f, 30.0f, 0.12f, 8.0f, 0.0f }
-                     : AmpSpec { 22.0f, 0.35f, 4.0f, 0.15f, 0.0f, 30.0f, 0.30f, 8.0f, 20000.0f };
+            a = AmpSpec { 24.5f, 0.80f, 20.0f, 0.02f, 0.0f, 30.0f, 0.05f, 4.0f, 40000.0f, 0.07f };   // each stage; chained, about 0.15 %
             break;
         case Desk::tg12345:
         case Desk::tg12345mk4:
@@ -88,7 +98,7 @@ struct Amp
 {
     bool on = false;
     float posClip = 1.0f, negClip = 1.0f, kneePos = 1.0f, kneeNeg = 1.0f;
-    float h2c = 0.0f, h3k = 0.0f, fluxCoef = 0.0f;
+    float h2c = 0.0f, h3c = 0.0f, h3k = 0.0f, fluxCoef = 0.0f;
 
     void set (const AmpSpec& s, double sampleRate) noexcept
     {
@@ -102,6 +112,8 @@ struct Amp
         const float ref = dbuToPeak (s.refDbu);
         // y += h2c * x^2  ->  2nd harmonic / fundamental = h2c * A / 2
         h2c = 2.0f * (s.h2Pct / 100.0f) / ref;
+        // y -= h3c * x^3  ->  3rd / fundamental = h3c * A^2 / 4
+        h3c = 4.0f * (s.h3Pct / 100.0f) / (ref * ref);
         // flux = a one-pole low-pass of the signal at lfHz (the iron's integral); y -= h3k * flux^3
         // ->  3rd / fundamental = h3k * (A g)^3 / 4 / A, with g the low-pass's gain at 50 Hz
         fluxCoef = std::exp (-juce::MathConstants<float>::twoPi * s.lfHz / (float) sampleRate);
@@ -113,7 +125,7 @@ struct Amp
     {
         if (! on) return x;
         flux = flux * fluxCoef + x * (1.0f - fluxCoef);
-        float y = x + h2c * x * x - h3k * flux * flux * flux;
+        float y = x + h2c * x * x - h3c * x * x * x - h3k * flux * flux * flux;
         // into the clip: linear to the knee, then rounding off towards the rail
         if (y > kneePos)       y = kneePos + (posClip - kneePos) * std::tanh ((y - kneePos) / (posClip - kneePos));
         else if (y < -kneeNeg) y = -kneeNeg - (negClip - kneeNeg) * std::tanh ((-y - kneeNeg) / (negClip - kneeNeg));

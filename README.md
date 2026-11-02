@@ -21,14 +21,15 @@ With Hawthorne 1.24 or later, WHITMAN also gets each track's **name** from Hawth
 
 **DESK** picks the console the tracks are mixed on. Like Hawthorne's machines, each desk has its own face and its own sound, and the choice is saved with the mix.
 
-* **EMI REDD.37** (Studio Two, 1958 to 1964: the early Beatles records): valve, with Siemens V72 channel amps.
-* **EMI REDD.51** (Studio Two, 1964 to 1968: Revolver, Sgt. Pepper; fed the Studer J37s): valve, with REDD.47 channel amps (more headroom, less distortion than the V72s).
+* **EMI REDD.37** (Studios One and Two, 1960 to 1964: *Love Me Do*, *Please Please Me*, most of *With The Beatles*): valve, on 31 Siemens V72 amplifiers. Warm and laid back; the V72s run out of headroom sooner and clip lopsided (second harmonic).
+* **EMI REDD.51** (Studio Two, January 1964 to November 1968: *Revolver*, *Sgt. Pepper*; fed the Studer J37s): the same facilities, but every amplifier is EMI's REDD.47 (EF86 into E88CC): more headroom, less distortion, punchier. Its stages cancel each other's second harmonic, so pushed it adds mostly third.
   Both REDDs, per channel:
   * **GAIN** into the valve channel amp. Around 0 it's clean; push it and the valves thicken and grit up. Bring the fader down to match. *(Not a control on the real desks: it stands in for how hard the signal hit the amps.)*
-  * **TREBLE** ±10 dB with the **POP** module (lift: a bell around 5 kHz; cut: a shelf at 10 kHz) or the **CLAS**sic module (a 10 kHz shelf both ways), and **BASS** ±10 dB, a 100 Hz shelf.
+  * **TREBLE** and **BASS**, ±10 dB, **switched in 2 dB steps** as on the desks, run as their actual circuit (passive constant-impedance bridged-T networks). The tone module is **POP** (treble lift a broad bell on 4.7 kHz, treble cut a shelf from about 2 kHz, bass reaching up to about 500 Hz) or **CLAS**sic (100 Hz and 10 kHz shelves). Studio Two's desks ran Pop.
   * **ECHO**: a send, after the fader, to an echo chamber; **ECHO RETURN** on the master brings it back.
-  * **PAN**, and a Painton quadrant fader (the lever swings on an arc under the panel; from above it's a straight slot).
-  The REDD.51 also has the **SPREADER** on the master, for the stereo width. Both mix through valve main amps, which round off before full scale, and are read on VU meters.
+  * **PAN**, a switch with 5 positions either side of centre, and a Painton quadrant fader (the lever swings on an arc under the panel; from above it's a straight slot).
+  The master has VU meters and the **PHASE** meter (the desks' stereo correlator: +1 mono, 0 wide, below 0 out of phase). The REDD.51 also has a **SPREADER** on the mix, for the stereo width (on the real desks the Spreaders were on the stereo input channels). Both mix through valve amps that round off before full scale.
+  How each part was sourced and what's still an estimate: "REDD accuracy" below.
 * **EMI TG12345 Mk I** (Studio Two from November 1968: *Abbey Road*, *All Things Must Pass*) and **Mk IV** (1971 to 1983: *The Dark Side of the Moon*): EMI's solid-state desks, with a VU meter on every channel. Per channel:
   * **GAIN** into a transistor channel amp: it gets edgier, not fatter, when pushed. *(Again, not a control on the real desk.)*
   * EQ: **BASS** ±10 dB, a 50 Hz shelf, plus
@@ -50,6 +51,17 @@ Each band-EQ desk keeps its own EQ settings, so you can switch desks and back wi
 The EQ curves follow each desk's published frequencies, ranges and filter slopes; the tests check every band of every desk against them. The amplifiers are modelled from the outside: where each one clips, how it rounds off into the clip (gradually for valves, at the last moment for op-amps), its even harmonics, and its transformers' low-end saturation, which rises as the frequency falls. Levels follow Hawthorne: 0 VU = +4 dBu = −18 dBFS, so 0 dBFS = +22 dBu and a desk that clips at +26 dBu has 4 dB over digital full scale (WHITMAN's CLIP lamp shows it; Hawthorne gets the floats).
 
 Only the Neve has published distortion figures (no more than 0.07 % THD from 50 Hz to 10 kHz at +20 dBu, flat 20 Hz–20 kHz, over +26 dBu out), and it's calibrated to them: a channel through the whole desk measures 0.065 % at 50 Hz and 0.035 % at 1 kHz. The others' figures are estimates from how they're documented (valve or solid-state, transformers or not, which has more headroom than which); `Source/AmpModel.h` says what each rests on. Matching the real units more closely than that needs measurements of the hardware.
+
+### REDD accuracy
+
+| Part | How it's modelled | Source |
+|---|---|---|
+| Tone controls | The circuit: constant-impedance bridged-T networks, ±10 dB in 2 dB steps, values from a published reconstruction | Kehew & Ryan, *Recording the Beatles* p. 89; EMI's description (via Phaedrus Audio); K. Hicks, MTSU thesis; Ian Bruce's measurements of the surviving REDD.51 (Pop peak ~4.7 kHz) |
+| Pan pots | Switched, 5 positions a side, constant power | EMI's description (via Phaedrus Audio) |
+| REDD.47 | 3rd-harmonic led, 0.15 % THD at +20 dBu through the desk, clip above +23 dBu, -3 dB at 7 Hz / 40 kHz | Phaedrus Audio (circuit), Sound On Sound (measurements of Chandler's REDD.47) |
+| V72 | Flat 50 Hz–20 kHz within 1 dB, 2nd-harmonic led, lopsided clipping | tube-workshop.de (measured), tab-funkenwerk.org; headroom and THD **estimated** (no published figures) |
+| Meters | VUs plus a stereo correlator | MusicTech |
+| Not known | Painton fader steps; the Spreader's circuit; the Pop curves are from the published graphs, which one measurement of the real desk says differ a little | |
 
 The EMI desks are modelled from published descriptions (Abbey Road, MusicTech's Studio Icons, the Waves/Abbey Road plug-in guides, Chandler's licensed TG and REDD hardware), not measured from the real ones. Where sources disagree, the choice is noted in `Source/Desk.h`. Not modelled: the real desks' channel counts (8 on the REDDs, 24 on the TGs; WHITMAN gives you one strip per tape track), their groups and multiple echo sends (one chamber here, a general chamber-like reverb rather than Studio Two's), and noise and hum.
 

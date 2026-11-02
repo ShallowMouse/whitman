@@ -178,7 +178,9 @@ private:
     DeskKnob echoReturn, spread, mainPresence, mainPresenceFreq;
     juce::Label dbLabel;
     bool clipped = false;
-    juce::Rectangle<int> lampArea;
+    juce::Rectangle<int> lampArea, corrArea;     // corrArea: the REDD desks' stereo correlator
+    float shownCorr = 1.0f;
+    void paintCorrelator (juce::Graphics&);
 };
 
 } // namespace whitman

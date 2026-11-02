@@ -1,4 +1,5 @@
 #include "MixEngine.h"
+#include "ReddEq.h"
 
 namespace whitman
 {
@@ -194,18 +195,18 @@ void MixEngine::compress (Strip& s, float* x, int n) noexcept
 
 void MixEngine::updateEq (Strip& s, float bassDb, float trebleDb, bool classic) noexcept
 {
-    if (bassDb != s.setBass)
+    // the REDD tone controls, as their bridged-T networks (ReddEq.h); the module (Pop or Classic) sets both bands
+    if (bassDb != s.setBass || classic != s.setClassic)
     {
         s.setBass = bassDb;
-        s.bass.setCoefficients (juce::IIRCoefficients::makeLowShelf (sampleRate, 100.0, 0.6, juce::Decibels::decibelsToGain (bassDb)));
+        s.bass.setCoefficients (ReddEq::digital (ReddEq::bass (bassDb, classic), sampleRate, ReddEq::bassWarpHz (classic)));
     }
     if (trebleDb != s.setTreble || classic != s.setClassic)
     {
         s.setTreble = trebleDb;
-        s.setClassic = classic;
-        // Pop module: the lift is a bell around 5 kHz, the cut a shelf at 10 kHz. Classic: a 10 kHz shelf both ways.
-        s.treble.setCoefficients (trebleCoefs (trebleDb, classic));
+        s.treble.setCoefficients (ReddEq::digital (ReddEq::treble (trebleDb, classic), sampleRate, ReddEq::trebleWarpHz (classic)));
     }
+    s.setClassic = classic;
 }
 
 void MixEngine::sslDynamics (Strip& s, float* x, int n) noexcept
@@ -306,12 +307,15 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
         const int si = routing.stripOfInput[(size_t) i];
         if (si < 0 || in[i] == nullptr) continue;
         auto& s = strips[(size_t) si];
+        if (s.eqDesk != (int) d) { s.eqDesk = (int) d; s.setBass = s.setTreble = s.setPresence = 1000.0f; s.setPresFreq = -1; }   // another desk's curves
 
         const bool audible = ! s.mute.load (std::memory_order_relaxed)
                              && (! soloing || s.solo.load (std::memory_order_relaxed));
         const float g = audible ? dbToGain (s.gainDb.load (std::memory_order_relaxed)) : 0.0f;
         float pl, pr;
-        panGains (s.pan.load (std::memory_order_relaxed), pl, pr);
+        float panPos = s.pan.load (std::memory_order_relaxed);
+        if (info.eq == EqStyle::redd) panPos = std::round (panPos * 5.0f) / 5.0f;    // the REDD pan pots: 5 steps a side
+        panGains (panPos, pl, pr);
         const float tl = g * pl, tr = g * pr;
         const float echoDb = s.echoDb.load (std::memory_order_relaxed);
         const float te = info.hasEcho && echoDb > echoMinDb ? g * juce::Decibels::decibelsToGain (echoDb) : 0.0f;
@@ -341,8 +345,8 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
             {
                 const bool cl = s.classic.load (std::memory_order_relaxed);
                 updateEq (s, b, t, cl);
-                if (b != 0.0f) s.bass.processSamples (tmp, n);
-                if (t != 0.0f) s.treble.processSamples (tmp, n);
+                if (ReddEq::snap (b) != 0.0f) s.bass.processSamples (tmp, n);
+                if (ReddEq::snap (t) != 0.0f) s.treble.processSamples (tmp, n);
             }
             else if (info.eq == EqStyle::tgMk1 || info.eq == EqStyle::tgMk4)
             {
@@ -468,6 +472,7 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
     float m = masterCur;
     const float dm = (mt - m) * inv;
     float pL = 0.0f, pR = 0.0f;
+    double sLR = 0.0, sLL = 0.0, sRR = 0.0;
     const bool mainValves = mainAmp.on;
     for (int k = 0; k < n; ++k)
     {
@@ -485,7 +490,11 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
         mixR[k] = r;
         pL = juce::jmax (pL, std::abs (l));
         pR = juce::jmax (pR, std::abs (r));
+        sLR += (double) l * r; sLL += (double) l * l; sRR += (double) r * r;
     }
+    // the stereo correlator (the REDD desks' phase meter)
+    correlation.store (sLL > 1.0e-9 && sRR > 1.0e-9 ? (float) (sLR / std::sqrt (sLL * sRR))
+                                                    : (sLL + sRR > 1.0e-9 ? 0.0f : 2.0f), std::memory_order_relaxed);
     masterCur = mt;
     raisePeak (masterPeakL, pL);
     raisePeak (masterPeakR, pR);

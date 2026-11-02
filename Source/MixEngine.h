@@ -104,7 +104,7 @@ public:
         // audio thread
         float curL = 0.0f, curR = 0.0f, curIn = 1.0f, curEcho = 0.0f;
         juce::IIRFilter bass, treble, presence;
-        float setBass = 1000.0f, setTreble = 1000.0f, setPresence = 1000.0f; bool setClassic = false; int setPresFreq = -1;
+        float setBass = 1000.0f, setTreble = 1000.0f, setPresence = 1000.0f; bool setClassic = false; int setPresFreq = -1, eqDesk = -1;
         float env = 0.0f;                           // compressor detector (gain-reduction dB)
         float gateEnv = 0.0f, gateLevel = 0.0f;     // gate (attenuation dB, level follower)
         float flux = 0.0f;                          // the channel transformer's flux
@@ -134,7 +134,8 @@ public:
     std::atomic<float> mainPresenceDb { 0.0f };    // TG: presence on the main outputs
     std::atomic<int>   mainPresenceFreq { 4 };
     std::atomic<float> masterPeakL { 0.0f }, masterPeakR { 0.0f };
-    std::atomic<bool>  masterClipped { false };    // over 0 dBFS since the UI last cleared it
+    std::atomic<bool>  masterClipped { false };
+    std::atomic<float> correlation { 2.0f };       // the mix's L/R correlation over the last block, -1 to +1 (2 = silence)    // over 0 dBFS since the UI last cleared it
 
     bool anySolo() const noexcept;
     Desk getDesk() const noexcept     { return deskFromInt (desk.load (std::memory_order_relaxed)); }

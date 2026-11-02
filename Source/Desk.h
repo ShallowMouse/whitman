@@ -40,10 +40,14 @@ struct DeskInfo
 };
 
 /*  Sources, and the calls made where they disagree:
-    - REDD.37 / .51: MusicTech "Studio Icons: EMI REDD.51"; Wikipedia "EMI REDD"; Puremix "The REDD console";
-      the Waves / Abbey Road REDD plug-in pages. EQ: bass 100 Hz shelf, Pop (5 kHz bell up, 10 kHz shelf down) or
-      Classic (10 kHz shelf), +/-10 dB, continuous. REDD.51: Spreader, VU meters, Painton quadrant faders.
-      No source gives the REDD.37 a spreader, so it has none here.
+    - REDD.37 / .51: Kehew & Ryan, Recording the Beatles (EQ +/-10 dB in 2 dB steps, p. 89); EMI's description
+      of the desk via Phaedrus Audio (constant-impedance passive EQ with 10 dB loss, Pop top boost 'broadly tuned
+      to 4,700 c/s', pan pots switched 5 positions a side with 3 dB loss, Spreaders on the stereo channels 1, 2,
+      7, 8); Sound On Sound (REDD.47, the .51 'essentially identical' to the .37, M/S Spreaders); MusicTech
+      "Studio Icons: EMI REDD.51" (VU meters and a stereo correlator); Abbey Road "REDD.37 #GearThatMadeUs";
+      Puremix; Wikipedia "EMI REDD"; K. Hicks, MTSU thesis (EQ network values). ReddEq.h has the details.
+      Still a simplification: the Spreader here works on the whole mix (on the desks it sat on the stereo input
+      channels), and only the REDD.51 has it.
     - TG12345: MusicTech "Vintage: EMI TG12345"; Abbey Road "#GearThatMadeUs"; the Waves TG12345 guide; Tape Op's
       review; Chandler's TG12345 MkIV EQ (Bonedo's test). Bass 50 Hz shelf (Chandler's MkIV EQ module uses 90/150 Hz,
       but it blends input and group EQs; the console sources say 50 Hz). Mk I channel treble: Waves (measured with
@@ -64,24 +68,28 @@ inline const DeskInfo& deskInfo (Desk d)
 
         { "EMI REDD.51", "REDD.51",
           "EMI (Record Engineering Development Dept.)  -  England  -  Abbey Road Studio Two, 1964 to 1968",
-          "EMI built its own desks. The valve REDD.51 replaced the REDD.37 in Studio Two in 1964 and fed the Studer J37 "
-          "4-tracks through Revolver and Sgt. Pepper until the solid-state TG12345 took over in November 1968. Eight mic "
-          "channels with REDD.47 valve amplifiers (more headroom and less distortion than the REDD.37's V72s), bass and "
-          "treble EQ (the treble a 'Pop' or 'Classic' module), pan pots, a Spreader for the stereo width, echo sends to "
-          "the chambers, Painton quadrant faders and VU meters.",
-          "All valve: thick and warm with a soft, rounded top. Push the GAIN and the channel amps thicken and grit up "
-          "sweetly; the main amps glue the mix. Pop treble lifts around 5 kHz; Classic opens the top at 10 kHz.",
+          "EMI built its own desks. Designed in 1959, the REDD.51 went into Studio Three in 1963 and Studio Two in "
+          "January 1964, where it fed the Studer J37 4-tracks through Revolver and Sgt. Pepper until the solid-state "
+          "TG12345 took over in November 1968. The same facilities as the REDD.37, but every amplifier - channel, mix and "
+          "line - is EMI's own REDD.47 (EF86 into E88CC), cheaper than the Siemens V72S and with more headroom and less "
+          "distortion. Eight mic channels, passive tone controls switched in 2 dB steps (Pop or Classic modules - Studio "
+          "Two ran Pop), switched pan pots, echo sends to the chambers, Painton quadrant faders, VU meters and a phase "
+          "(stereo correlator) meter.",
+          "Valve, but punchy and clean until pushed: the REDD.47's stages cancel each other's second harmonic, so what "
+          "it adds when driven is mostly third - a firmer, harder edge. Pop treble is a broad lift centred on 4.7 kHz; "
+          "Pop bass reaches up into the low mids.",
           true, true, EqStyle::redd, false, true, false, false,
           0.90f, 0.35f, 0.98f, 0.15f, 8.0f, 20000.0f },
 
         { "EMI REDD.37", "REDD.37",
           "EMI (Record Engineering Development Dept.)  -  England  -  Abbey Road Studio Two, 1958 to 1964",
-          "The REDD.51's older brother and the first of EMI's own valve desks with eight mic channels - nicknamed 'the "
-          "Beatles' console', it's the desk of their early records, from Love Me Do. Its channel amplifiers were Siemens "
-          "V72s, with less headroom than the REDD.51's later amps. The same bass and Pop / Classic treble EQ, echo sends "
-          "and Painton quadrant faders.",
-          "Valve, and rawer than the REDD.51: the V72s run out of headroom sooner, so the GAIN gets gritty and "
-          "compressed quicker, with a darker, more rounded top. The early-60s Abbey Road sound.",
+          "Designed in 1958 and first used on 8 September 1960; three were built, for Studios One and Two. Eight mic "
+          "channels into four outputs, run on 31 Siemens V72 valve amplifiers (two EF804 pentodes each). Nicknamed 'the "
+          "Beatles' console': Love Me Do, Please Please Me and most of With The Beatles. Passive tone controls in 2 dB "
+          "steps (Pop or Classic modules), switched pan pots, echo sends, Painton quadrant faders, VU meters and a phase "
+          "meter.",
+          "Valve, warm and laid back beside the REDD.51: the V72s run out of headroom sooner and clip lopsided, so the "
+          "GAIN thickens with second harmonic and squashes sooner. Full range - the V72 is flat to 20 kHz.",
           true, true, EqStyle::redd, false, false, false, false,
           0.70f, 0.45f, 0.95f, 0.20f, 12.0f, 12000.0f },
 

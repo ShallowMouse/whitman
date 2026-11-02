@@ -612,7 +612,7 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     addChildComponent (compMode);
 
     trebleMode.setWantsKeyboardFocus (false);
-    trebleMode.setTooltip ("Treble module: POP (5 kHz bell) or CLASSIC (10 kHz shelf)");
+    trebleMode.setTooltip ("Tone module: POP (treble lift a 4.7 kHz bell, bass reaching higher) or CLASSIC (100 Hz and 10 kHz shelves). Studio Two's desks ran Pop modules.");
     trebleMode.onClick = [this]
     {
         auto& s = engine.strip (index);
@@ -686,9 +686,16 @@ void ChannelStrip::setDesk (Desk d)
         ? "GAIN into the valve channel amp (double-click for 0). Push it to drive the valves; bring the fader down to match."
         : "GAIN into the channel amp (double-click for 0). Push it and the transistors get edgy; bring the fader down to match.");
     const bool tg = info.eq == EqStyle::tgMk1 || info.eq == EqStyle::tgMk4;
-    bass.setTooltip (tg ? "BASS: a 50 Hz shelf (double-click for flat)" : "BASS: a 100 Hz shelf (double-click for flat)");
+    const bool redd = info.eq == EqStyle::redd;
+    // the REDDs' tone controls and pan pots were switches: EQ in 2 dB steps, pan 5 positions either side of centre
+    treble.setRange (-10.0, 10.0, redd ? 2.0 : 0.5);
+    bass.setRange (-10.0, 10.0, redd ? 2.0 : 0.5);
+    pan.setRange (-1.0, 1.0, redd ? 0.2 : 0.01);
+    bass.setTooltip (tg ? "BASS: a 50 Hz shelf (double-click for flat)"
+                        : "BASS, switched in 2 dB steps (double-click for flat). Classic: a 100 Hz shelf. Pop: a broader shelf that reaches up to about 500 Hz.");
     treble.setTooltip (tg ? "TREBLE (double-click for flat): the lift is a bell at 5 kHz, the cut a shelf at 10 kHz"
-                          : "TREBLE (double-click for flat). Pop: lift is a bell at 5 kHz, cut a shelf at 10 kHz. Classic: a 10 kHz shelf.");
+                          : "TREBLE, switched in 2 dB steps (double-click for flat). Pop: lift is a broad bell at 4.7 kHz, cut a shelf from about 2 kHz. Classic: a 10 kHz shelf.");
+    pan.setTooltip (redd ? "Pan: a switch, 5 positions either side of centre (double-click to centre)" : "Pan (double-click to centre)");
     for (auto* k : { &input, &treble, &presence, &presenceFreq, &bass, &comp, &recovery, &echo, &pan }) k->setSkin (skin);
     fader.setSkin (skin);
 
@@ -1044,11 +1051,61 @@ void MasterStrip::updateMeter()
     vuR.push (r);
     const bool c = engine.masterClipped.load();
     if (c != clipped) { clipped = c; repaint (lampArea); }
+    if (! corrArea.isEmpty())
+    {
+        const float t = engine.correlation.load();
+        const float target = t > 1.5f ? 1.0f : juce::jlimit (-1.0f, 1.0f, t);   // at rest the needle sits at +1
+        shownCorr += (target - shownCorr) * 0.2f;
+        repaint (corrArea);
+    }
 }
 
 void MasterStrip::mouseDown (const juce::MouseEvent& e)
 {
     if (lampArea.contains (e.getPosition())) { engine.masterClipped = false; clipped = false; repaint (lampArea); }
+}
+
+void MasterStrip::paintCorrelator (juce::Graphics& g)
+{
+    // a small moving-coil meter: -1 (out of phase) on the left, 0, +1 (mono) on the right
+    auto r = corrArea.toFloat();
+    g.setColour (juce::Colour (0xff141414));
+    g.fillRoundedRectangle (r, 3.0f);
+    auto face = r.reduced (4.0f);
+    g.setColour (juce::Colour (0xfff1e6c8));
+    g.fillRoundedRectangle (face, 2.0f);
+    const float arcR = face.getHeight() * 0.95f;
+    const auto pivot = juce::Point<float> (face.getCentreX(), face.getBottom() + face.getHeight() * 0.12f);
+    const float span = juce::jmin (1.0f, std::asin (juce::jmin (0.95f, face.getWidth() * 0.42f / arcR)));
+    const float radius = arcR;
+    auto at = [&] (float v, float rad) { const float a = v * span; return pivot + juce::Point<float> (std::sin (a), -std::cos (a)) * rad; };
+    juce::Path arc;
+    arc.addCentredArc (pivot.x, pivot.y, arcR, arcR, 0.0f, -span, span, true);
+    g.setColour (juce::Colour (0xff2a2a2a));
+    g.strokePath (arc, juce::PathStrokeType (1.0f));
+    juce::Path red;
+    red.addCentredArc (pivot.x, pivot.y, arcR, arcR, 0.0f, -span, 0.0f, true);
+    g.setColour (juce::Colour (0xffc0392b));
+    g.strokePath (red, juce::PathStrokeType (2.5f));
+    g.setColour (juce::Colour (0xff2a2a2a));
+    g.setFont (Pequod::heading (8.5f, false));
+    for (float v : { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f })
+    {
+        g.drawLine (juce::Line<float> (at (v, arcR * 0.92f), at (v, arcR * 1.06f)), 1.0f);
+        if (v == -1.0f || v == 0.0f || v == 1.0f)
+        {
+            const auto p = at (v, arcR * 0.74f);
+            g.drawText (v == 0.0f ? juce::String ("0") : (v < 0 ? juce::String ("-1") : juce::String ("+1")),
+                        juce::Rectangle<float> (p.x - 10.0f, p.y - 5.0f, 20.0f, 10.0f), juce::Justification::centred);
+        }
+    }
+    g.setFont (Pequod::heading (7.0f, false));
+    g.drawText ("PHASE", face.withTrimmedTop (face.getHeight() * 0.68f), juce::Justification::centred);
+    g.saveState();
+    g.reduceClipRegion (face.toNearestInt());
+    g.setColour (juce::Colour (0xff111111));
+    g.drawLine (juce::Line<float> (at (shownCorr, radius * 0.25f), at (shownCorr, radius * 1.08f)), 1.3f);
+    g.restoreState();
 }
 
 void MasterStrip::paint (juce::Graphics& g)
@@ -1114,6 +1171,8 @@ void MasterStrip::paint (juce::Graphics& g)
         g.drawText (juce::CharPointer_UTF8 ("\xe2\x86\x92 HAWTHORNE 2-TRACK"), r.withTop (28.0f).withHeight (14.0f), juce::Justification::centred);
     }
 
+    if (! corrArea.isEmpty()) paintCorrelator (g);
+
     if (! lampArea.isEmpty())
     {
         auto lamp = lampArea.toFloat();
@@ -1141,6 +1200,13 @@ void MasterStrip::resized()
         r.removeFromTop (8);
     }
     else lampArea = {};      // the modelled desks' main amps round off before they clip: no lamp
+    // the REDD desks had a stereo correlator between their VUs (MusicTech, Studio Icons: EMI REDD.51)
+    if (desk == Desk::redd51 || desk == Desk::redd37)
+    {
+        corrArea = r.removeFromTop (62).withSizeKeepingCentre (juce::jmin (r.getWidth(), 170), 62);
+        r.removeFromTop (8);
+    }
+    else corrArea = {};
     if (echoReturn.isVisible())
         echoReturn.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
     if (spread.isVisible())
