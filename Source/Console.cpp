@@ -12,7 +12,7 @@ const DeskSkin& DeskSkin::of (Desk d)
         // WHITMAN: PEQUOD charcoal, ink blue
         { Pequod::Colours::bg, Pequod::Colours::panelHi, Pequod::Colours::panel, Pequod::Colours::line,
           Pequod::Colours::text, Pequod::Colours::textDim, Pequod::Colours::mustard, Pequod::Colours::well,
-          false, false, false, 76, 132 },
+          false, false, true, 76, 236 },
         // REDD.51: EMI grey-green painted steel, cream engraving, black bakelite knobs, Painton quadrant faders, VUs
         { C (0xff252825), C (0xff737a73), C (0xff5f665f), C (0xff383d39),
           C (0xfff2eee0), C (0xffd2cfc0), C (0xfff0dfb0), C (0xff1b1d1b),
@@ -40,11 +40,11 @@ const DeskSkin& DeskSkin::of (Desk d)
         // SSL 4000 E: dark grey, white legends, colour-capped knobs
         { C (0xff151617), C (0xff43464b), C (0xff35383c), C (0xff23252a),
           C (0xfff2f2f2), C (0xffbfc2c6), C (0xfff0c24a), C (0xff111213),
-          true, false, true, 126, 236, 2, "OXFORD  -  ENGLAND" },
+          true, false, true, 126, 236, 2, "OXFORD  -  ENGLAND", 1 },
         // Neotek Elite: light grey, dark legends, grey knobs with coloured caps
         { C (0xff1e2022), C (0xffb2b4b3), C (0xff9fa2a1), C (0xff5d6062),
           C (0xff16181a), C (0xff3a3e41), C (0xff2f6fae), C (0xff16181a),
-          true, false, true, 104, 236, 2, "ELECTRICAL AUDIO  -  CHICAGO" },
+          true, false, true, 104, 236, 2, "ELECTRICAL AUDIO  -  CHICAGO", 2 },
     };
     return skins[juce::jlimit (0, numDesks - 1, (int) d)];
 }
@@ -102,6 +102,41 @@ void Meter::push (float p0, float p1)
 
 void Meter::paint (juce::Graphics& g)
 {
+    if (style != 0)
+    {
+        // a meter-bridge bargraph: lit segments up a black window, with a scale beside it
+        auto r = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff070707));
+        g.fillRoundedRectangle (r, 2.0f);
+        auto col = r.reduced (3.0f).removeFromRight (r.getWidth() * 0.42f);
+        auto scale = r.reduced (3.0f).withRight (col.getX() - 2.0f);
+        const int segs = 30;
+        const float sh = col.getHeight() / (float) segs;
+        g.setFont (Pequod::heading (7.5f, false));
+        for (float db : { 0.0f, -10.0f, -20.0f })
+        {
+            const float y = col.getBottom() - col.getHeight() * dbToPos (db + nominalDbfs + 3.0f);   // marked in VU
+            g.setColour (juce::Colour (0xff9a9a9a));
+            g.drawText (db == 0.0f ? juce::String ("0") : juce::String ((int) db), scale.withY (y - 5.0f).withHeight (10.0f), juce::Justification::centredRight, false);
+        }
+        for (int i = 0; i < segs; ++i)
+        {
+            const float pos = ((float) i + 0.5f) / (float) segs;
+            const auto seg = juce::Rectangle<float> (col.getX(), col.getBottom() - (float) (i + 1) * sh, col.getWidth(), sh).reduced (0.0f, sh * 0.18f);
+            // the segment's level in dBFS, for its colour
+            float dbAt = -60.0f;
+            for (float d = -60.0f; d <= 6.0f; d += 0.25f) if (dbToPos (d) <= pos) dbAt = d;
+            const bool lit = level[0] > -60.0f && pos <= dbToPos (level[0]);
+            const bool peak = hold[0] > -60.0f && std::abs (pos - dbToPos (hold[0])) < 0.5f / (float) segs;
+            juce::Colour on;
+            if (style == 1) on = dbAt > -18.0f + 6.0f ? juce::Colour (0xffff5a2a) : juce::Colour (0xffff8a2e);          // plasma glows orange
+            else            on = dbAt > -3.0f ? juce::Colour (0xffff3b2e) : dbAt > -18.0f + 3.0f ? juce::Colour (0xffffc23a) : juce::Colour (0xff46d65a);
+            g.setColour (lit || peak ? on : on.withAlpha (0.10f));
+            g.fillRect (seg);
+        }
+        return;
+    }
+
     auto r = getLocalBounds().toFloat();
     g.setColour (Pequod::Colours::rail);
     g.fillRoundedRectangle (r, 2.0f);
@@ -636,11 +671,13 @@ void ChannelStrip::setDesk (Desk d)
     trebleMode.setVisible (info.eq == EqStyle::redd);
     presence.setVisible (info.eq == EqStyle::tgMk4);
     presenceFreq.setVisible (info.eq == EqStyle::tgMk4);
-    chanVu.setVisible (info.channelVus);
+    // every desk shows a meter per channel at the top: its own kind where it had one, else an analogue VU
+    chanVu.setVisible (skin->meterStyle == 0);
+    meter.setVisible (skin->meterStyle != 0);
+    meter.style = skin->meterStyle;
     if (bandPanel != nullptr) bandPanel->setDesk (d);
     if (dynPanel != nullptr) { dynPanel->setVisible (info.sslDynamics); dynPanel->setSkin (skin); }
     echo.setTooltip (juce::String (info.sendName) + " send, after the fader (double-click for off)");
-    meter.setVisible (! info.channelVus);
     comp.setVisible (info.hasComp);
     recovery.setVisible (info.hasComp);
     compMode.setVisible (info.hasComp);
@@ -820,91 +857,102 @@ void ChannelStrip::paint (juce::Graphics& g)
 void ChannelStrip::resized()
 {
     if (skin == nullptr) return;
-    auto r = getLocalBounds().reduced (6, 0);
-    r.removeFromTop (28);
-    if (chanVu.isVisible())
+    // Lay the controls out at a scale, see how much room the fader gets, then make the fader
+    // 3/5 of what it would have had at scale 1 and give the rest to the controls.
+    auto full = getLocalBounds().reduced (6, 0);
+    const int bottom = 20 + 12 + (skin->bakeliteKnobs ? 14 : 0);      // the dB readout, its gap, the panel's screw
+    auto layoutAt = [&] (float s) -> int                                // returns the y where the fader starts
     {
-        chanVu.setBounds (r.removeFromTop (52));
-        r.removeFromTop (4);
-    }
-    nameLabel.setBounds (r.removeFromTop (22));
+        auto r = full;
+        auto px = [s] (int v) { return juce::roundToInt ((float) v * s); };
+        r.removeFromTop (28);
+        if (chanVu.isVisible())   { chanVu.setBounds (r.removeFromTop (52)); r.removeFromTop (4); }
+        else if (meter.isVisible()) { meter.setBounds (r.removeFromTop (72).withSizeKeepingCentre (34, 72)); r.removeFromTop (4); }
+        nameLabel.setBounds (r.removeFromTop (22));
 
-    if (skin->bakeliteKnobs)
-    {
-        const bool many = comp.isVisible();          // the TG has more rows: smaller knobs
-        const int k = many ? 34 : 40, gap = many ? 14 : 16;
-        auto knobRow = [&] (DeskKnob& knob)
+        if (skin->bakeliteKnobs)
         {
-            if (! knob.isVisible()) return juce::Rectangle<int>();
-            r.removeFromTop (gap);
-            auto row = r.removeFromTop (k);
-            knob.setBounds (row.withSizeKeepingCentre (k, k));
-            return row;
-        };
-        // a knob with a small switch (or a button) beside it
-        auto withSide = [&] (DeskKnob& knob, juce::Component* button, DeskKnob* small)
-        {
-            auto row = knobRow (knob);
-            if (row.isEmpty()) return;
-            knob.setBounds (row.removeFromLeft (k + 4).withSizeKeepingCentre (k, k));
-            if (button != nullptr && small != nullptr)
+            const bool many = comp.isVisible();          // the TG has more rows: smaller knobs
+            const int k = juce::jmin (r.getWidth() - 4, px (many ? 34 : 40)), gap = px (many ? 14 : 16);
+            auto knobRow = [&] (DeskKnob& knob)
             {
-                button->setBounds (row.removeFromTop (16).reduced (1, 0));
-                small->setBounds (row.withSizeKeepingCentre (24, 24));
-            }
-            else if (button != nullptr) button->setBounds (row.withSizeKeepingCentre (row.getWidth(), 18));
-            else if (small != nullptr)  small->setBounds (row.withSizeKeepingCentre (28, 28));
-        };
-        if (bandPanel != nullptr && bandPanel->isVisible())
-        {
-            // the band-EQ desks: smaller knobs, the EQ (and SSL dynamics) in their panels
-            const int kk = 30, gg = 13;
-            auto smallRow = [&] (DeskKnob& knob)
-            {
-                r.removeFromTop (gg);
-                knob.setBounds (r.removeFromTop (kk).withSizeKeepingCentre (kk, kk));
+                if (! knob.isVisible()) return juce::Rectangle<int>();
+                r.removeFromTop (gap);
+                auto row = r.removeFromTop (k);
+                knob.setBounds (row.withSizeKeepingCentre (k, k));
+                return row;
             };
-            smallRow (input);
-            r.removeFromTop (4);
-            bandPanel->setBounds (r.removeFromTop (bandPanel->preferredHeight()));
-            if (dynPanel->isVisible()) dynPanel->setBounds (r.removeFromTop (dynPanel->preferredHeight()));
-            smallRow (echo);
-            smallRow (pan);
-            r.removeFromTop (8);
+            auto withSide = [&] (DeskKnob& knob, juce::Component* button, DeskKnob* small)
+            {
+                auto row = knobRow (knob);
+                if (row.isEmpty()) return;
+                knob.setBounds (row.removeFromLeft (k + 4).withSizeKeepingCentre (k, k));
+                if (button != nullptr && small != nullptr)
+                {
+                    button->setBounds (row.removeFromTop (16).reduced (1, 0));
+                    small->setBounds (row.withSizeKeepingCentre (px (24), px (24)));
+                }
+                else if (button != nullptr) button->setBounds (row.withSizeKeepingCentre (row.getWidth(), 18));
+                else if (small != nullptr)  small->setBounds (row.withSizeKeepingCentre (px (28), px (28)));
+            };
+            if (bandPanel != nullptr && bandPanel->isVisible())
+            {
+                const int kk = juce::jmin (r.getWidth() - 4, px (30)), gg = px (13);
+                auto smallRow = [&] (DeskKnob& knob)
+                {
+                    r.removeFromTop (gg);
+                    knob.setBounds (r.removeFromTop (kk).withSizeKeepingCentre (kk, kk));
+                };
+                smallRow (input);
+                r.removeFromTop (4);
+                bandPanel->setScale (s);
+                bandPanel->setBounds (r.removeFromTop (bandPanel->preferredHeight()));
+                if (dynPanel->isVisible()) { dynPanel->setScale (s); dynPanel->setBounds (r.removeFromTop (dynPanel->preferredHeight())); }
+                smallRow (echo);
+                smallRow (pan);
+                r.removeFromTop (8);
+            }
+            else
+            {
+                knobRow (input);
+                withSide (treble, trebleMode.isVisible() ? &trebleMode : nullptr, nullptr);
+                withSide (presence, nullptr, &presenceFreq);
+                knobRow (bass);
+                withSide (comp, &compMode, &recovery);
+                knobRow (echo);
+                knobRow (pan);
+                r.removeFromTop (8);
+            }
         }
         else
         {
-        knobRow (input);
-        withSide (treble, trebleMode.isVisible() ? &trebleMode : nullptr, nullptr);
-        withSide (presence, nullptr, &presenceFreq);
-        knobRow (bass);
-        withSide (comp, &compMode, &recovery);
-        knobRow (echo);
-        knobRow (pan);
-        r.removeFromTop (8);
+            r.removeFromTop (px (6));
+            pan.setBounds (r.removeFromTop (px (44)).withSizeKeepingCentre (px (44), px (44)));
+            r.removeFromTop (px (16));
         }
-    }
-    else
-    {
-        r.removeFromTop (6);
-        pan.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
-        r.removeFromTop (16);
-    }
 
-    auto ms = r.removeFromTop (22);
-    mute.setBounds (ms.removeFromLeft (ms.getWidth() / 2 - 1));
-    ms.removeFromLeft (2);
-    solo.setBounds (ms);
-    r.removeFromTop (8);
-    if (skin->bakeliteKnobs) r.removeFromBottom (14);    // the panel's screw
+        auto ms = r.removeFromTop (22);
+        mute.setBounds (ms.removeFromLeft (ms.getWidth() / 2 - 1));
+        ms.removeFromLeft (2);
+        solo.setBounds (ms);
+        r.removeFromTop (8);
+        return r.getY();
+    };
+
+    const int faderTop1 = layoutAt (1.0f);
+    const int faderLen1 = full.getBottom() - bottom - faderTop1;
+    const int controls1 = faderTop1 - full.getY();
+    const int target = juce::roundToInt ((float) faderLen1 * 0.6f);        // 3/5 the length
+    const float s = juce::jlimit (1.0f, 1.45f, (float) (controls1 + (faderLen1 - target)) / (float) controls1);
+    const int faderTop = layoutAt (s);
+
+    auto r = full.withTop (faderTop);
+    r.removeFromBottom (skin->bakeliteKnobs ? 14 : 0);
     dbLabel.setBounds (r.removeFromBottom (20));
     r.removeFromBottom (12);
-    if (meter.isVisible())
-    {
-        meter.setBounds (r.removeFromRight (skin->bakeliteKnobs ? 7 : 10).reduced (0, 17));
-        r.removeFromRight (2);
-    }
-    fader.setBounds (r);
+    // what's left over below the controls goes above the fader, so the faders line up along the bottom
+    const int len = juce::jmax (target, juce::jmin (r.getHeight(), target));
+    fader.setBounds (r.withTop (r.getBottom() - len));
 }
 
 //==============================================================================
@@ -958,9 +1006,9 @@ void MasterStrip::setDesk (Desk d)
     desk = d;
     skin = &DeskSkin::of (d);
     const auto& info = deskInfo (d);
-    meter.setVisible (! skin->vuMeters);
-    vuL.setVisible (skin->vuMeters);
-    vuR.setVisible (skin->vuMeters);
+    meter.setVisible (false);         // every desk reads its mix on a pair of VUs
+    vuL.setVisible (true);
+    vuR.setVisible (true);
     echoReturn.setVisible (info.hasEcho);
     echoReturn.setSkin (skin);
     spread.setVisible (info.hasSpread);
@@ -1081,46 +1129,39 @@ void MasterStrip::resized()
 {
     if (skin == nullptr) return;
     auto r = getLocalBounds().reduced (10, 0);
-    if (skin->bakeliteKnobs)
+    r.removeFromTop (skin->bakeliteKnobs ? 62 : 50);
+    auto meters = r.removeFromTop (110);
+    vuL.setBounds (meters.removeFromLeft (meters.getWidth() / 2 - 3));
+    meters.removeFromLeft (6);
+    vuR.setBounds (meters);
+    r.removeFromTop (10);
+    if (! skin->bakeliteKnobs)
     {
-        r.removeFromTop (62);
-        auto meters = r.removeFromTop (110);
-        vuL.setBounds (meters.removeFromLeft (meters.getWidth() / 2 - 3));
-        meters.removeFromLeft (6);
-        vuR.setBounds (meters);
-        r.removeFromTop (10);
-        if (echoReturn.isVisible())
-            echoReturn.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
-        if (spread.isVisible())
-        {
-            r.removeFromTop (4);
-            spread.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
-        }
-        if (mainPresence.isVisible())
-        {
-            r.removeFromTop (4);
-            auto row = r.removeFromTop (44).withSizeKeepingCentre (44 + 6 + 28, 44);
-            mainPresence.setBounds (row.removeFromLeft (44));
-            mainPresenceFreq.setBounds (row.removeFromRight (28).withSizeKeepingCentre (28, 28));
-        }
-        lampArea = {};      // the main amps round off just before full scale: nothing to clip
-        r.removeFromTop (30);
-        r.removeFromBottom (14);
-        dbLabel.setBounds (r.removeFromBottom (22));
-        r.removeFromBottom (8);
-        fader.setBounds (r.withSizeKeepingCentre (96, r.getHeight()));
-    }
-    else
-    {
-        r.removeFromTop (50);
         lampArea = r.removeFromTop (20).withSizeKeepingCentre (54, 20);
-        r.removeFromTop (16);
-        dbLabel.setBounds (r.removeFromBottom (22));
-        r.removeFromBottom (4);
-        meter.setBounds (r.removeFromRight (26).reduced (0, 17));
-        r.removeFromRight (4);
-        fader.setBounds (r);
+        r.removeFromTop (8);
     }
+    else lampArea = {};      // the modelled desks' main amps round off before they clip: no lamp
+    if (echoReturn.isVisible())
+        echoReturn.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
+    if (spread.isVisible())
+    {
+        r.removeFromTop (4);
+        spread.setBounds (r.removeFromTop (44).withSizeKeepingCentre (44, 44));
+    }
+    if (mainPresence.isVisible())
+    {
+        r.removeFromTop (4);
+        auto row = r.removeFromTop (44).withSizeKeepingCentre (44 + 6 + 28, 44);
+        mainPresence.setBounds (row.removeFromLeft (44));
+        mainPresenceFreq.setBounds (row.removeFromRight (28).withSizeKeepingCentre (28, 28));
+    }
+    r.removeFromTop (30);
+    if (skin->bakeliteKnobs) r.removeFromBottom (14);
+    dbLabel.setBounds (r.removeFromBottom (22));
+    r.removeFromBottom (8);
+    // the same 3/5 length as the channels' faders, along the bottom
+    const int len = juce::roundToInt ((float) getHeight() * 0.36f);
+    fader.setBounds (r.withTop (r.getBottom() - juce::jmin (r.getHeight(), len)).withSizeKeepingCentre (96, juce::jmin (r.getHeight(), len)));
 }
 
 } // namespace whitman

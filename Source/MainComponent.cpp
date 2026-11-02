@@ -481,7 +481,7 @@ void MainComponent::paint (juce::Graphics& g)
     g.drawText (shown,
                 statusArea.withTrimmedTop (statusArea.getHeight() / 2).translated (0, -2), juce::Justification::centredLeft, true);
 
-    if (shownStrips.load() == 0 || deviceName.isEmpty())
+    if (std::none_of (strips.begin(), strips.end(), [] (auto* s) { return s->isVisible(); }))
     {
         auto area = viewport.getBounds();
         g.setFont (Pequod::heading (16.0f));

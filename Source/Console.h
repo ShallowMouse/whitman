@@ -21,6 +21,7 @@ struct DeskSkin
     int stripWidth, masterWidth;
     int knobStyle = 0;            // 0 black bakelite, 1 aluminium, 2 grey with a coloured cap
     const char* plateLine = "";   // under the desk's name on the master plate
+    int meterStyle = 0;           // each channel's meter: 0 a needle VU, 1 a plasma bargraph (SSL), 2 an LED bargraph (Neotek)
 
     static const DeskSkin& of (Desk d);
 };
@@ -39,6 +40,8 @@ public:
     static float dbToPos (float db) noexcept;   // 0 (bottom) .. 1 (top), -60 .. +6 dB
 
     juce::Colour lowColour = Pequod::Colours::mustardLo.brighter (0.25f), midColour = Pequod::Colours::mustard;
+    /** 0 a smooth bar; 1 a gas-plasma bargraph (orange segments, SSL); 2 an LED bargraph (green / yellow / red) */
+    int style = 0;
 
 private:
     int numChannels;

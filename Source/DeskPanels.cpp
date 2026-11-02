@@ -3,7 +3,7 @@
 namespace whitman
 {
 
-static constexpr int capH = 12, rowKnob = 30, smallKnob = 22;
+static constexpr int capH = 12;
 
 void drawRowCaption (juce::Graphics& g, const DeskSkin& skin, juce::Rectangle<float> row, const juce::String& title, const juce::String& value)
 {
@@ -232,7 +232,7 @@ int BandEqPanel::preferredHeight() const
     const int nb = (int) def->bands.size();
     if (def->sliders)
         return capH + 84 + 22 + 11 + 2 * 18 + 4;            // captions, sliders, frequency switches and their readings, filter buttons
-    return capH + rowKnob + 2 + nb * (capH + rowKnob + 2);   // filters, then a row per band
+    return capH + rowKnob() + 2 + nb * (capH + rowKnob() + 2);   // filters, then a row per band
 }
 
 void BandEqPanel::resized()
@@ -267,23 +267,23 @@ void BandEqPanel::resized()
     // filters row
     r.removeFromTop (capH);
     {
-        auto row = r.removeFromTop (rowKnob);
+        auto row = r.removeFromTop (rowKnob());
         auto half = row.removeFromLeft (row.getWidth() / 2);
-        hpf.setBounds (half.withSizeKeepingCentre (smallKnob + 2, smallKnob + 2));
-        lpf.setBounds (row.withSizeKeepingCentre (smallKnob + 2, smallKnob + 2));
-        if (! lpf.isVisible()) hpf.setBounds (half.getUnion (row).withSizeKeepingCentre (smallKnob + 2, smallKnob + 2));
+        hpf.setBounds (half.withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
+        lpf.setBounds (row.withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
+        if (! lpf.isVisible()) hpf.setBounds (half.getUnion (row).withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
     }
     r.removeFromTop (2);
     for (int b = 0; b < nb; ++b)
     {
         const auto bi = (size_t) b;
         r.removeFromTop (capH);
-        auto row = r.removeFromTop (rowKnob);
-        gain[bi].setBounds (row.removeFromLeft (rowKnob + 2).withSizeKeepingCentre (rowKnob, rowKnob));
+        auto row = r.removeFromTop (rowKnob());
+        gain[bi].setBounds (row.removeFromLeft (rowKnob() + 2).withSizeKeepingCentre (rowKnob(), rowKnob()));
         row.removeFromLeft (2);
-        freq[bi].setBounds (row.removeFromLeft (smallKnob + 2).withSizeKeepingCentre (smallKnob, smallKnob));
+        freq[bi].setBounds (row.removeFromLeft (smallKnob() + 2).withSizeKeepingCentre (smallKnob(), smallKnob()));
         row.removeFromLeft (2);
-        if (q[bi].isVisible())   q[bi].setBounds (row.removeFromLeft (smallKnob + 2).withSizeKeepingCentre (smallKnob, smallKnob));
+        if (q[bi].isVisible())   q[bi].setBounds (row.removeFromLeft (smallKnob() + 2).withSizeKeepingCentre (smallKnob(), smallKnob()));
         if (alt[bi].isVisible()) alt[bi].setBounds (row.withSizeKeepingCentre (row.getWidth(), 15));
         r.removeFromTop (2);
     }
@@ -330,14 +330,14 @@ void BandEqPanel::paint (juce::Graphics& g)
         }
         else drawRowCaption (g, *skin, row, t, {});
     }
-    float y = (float) capH + (float) rowKnob + 2.0f;
+    float y = (float) capH + (float) rowKnob() + 2.0f;
     for (int b = 0; b < nb; ++b)
     {
         const auto& band = def->bands[(size_t) b];
         juce::String title = juce::String (band.label) + " " + freqText (b);
         if (band.qKnob) title << " Q" << juce::String (band.qAt ((float) q[(size_t) b].getValue()), 1);
         drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, y, w, (float) capH), title, gainText (p->gain[(size_t) b].load()));
-        y += (float) capH + (float) rowKnob + 2.0f;
+        y += (float) capH + (float) rowKnob() + 2.0f;
     }
 }
 
@@ -427,10 +427,10 @@ void SslDynamicsPanel::resized()
     auto layoutRow = [&] (DeskKnob& big, DeskKnob& a, DeskKnob& b, juce::TextButton& btn1, juce::TextButton* btn2)
     {
         r.removeFromTop (capH);
-        auto row = r.removeFromTop (rowKnob);
-        big.setBounds (row.removeFromLeft (rowKnob + 2).withSizeKeepingCentre (rowKnob, rowKnob));
-        a.setBounds (row.removeFromLeft (smallKnob + 2).withSizeKeepingCentre (smallKnob, smallKnob));
-        b.setBounds (row.removeFromLeft (smallKnob + 2).withSizeKeepingCentre (smallKnob, smallKnob));
+        auto row = r.removeFromTop (rowKnob());
+        big.setBounds (row.removeFromLeft (rowKnob() + 2).withSizeKeepingCentre (rowKnob(), rowKnob()));
+        a.setBounds (row.removeFromLeft (smallKnob() + 2).withSizeKeepingCentre (smallKnob(), smallKnob()));
+        b.setBounds (row.removeFromLeft (smallKnob() + 2).withSizeKeepingCentre (smallKnob(), smallKnob()));
         auto side = row.reduced (1, 0);
         if (btn2 != nullptr)
         {
@@ -454,7 +454,7 @@ void SslDynamicsPanel::paint (juce::Graphics& g)
     drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, 0.0f, w, (float) capH), "COMP " + ratioText + " " + juce::String (threshold.getValue(), 0), grText);
     const auto gateText = range.getValue() < 0.05 ? juce::String ("OFF") : juce::String (juce::roundToInt (range.getValue())) + "dB " + juce::String (gateThreshold.getValue(), 0);
     const auto gtText = shownGate >= 0.05f ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")) + juce::String (shownGate, 1) : juce::String();
-    drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, (float) (capH + rowKnob + 2), w, (float) capH), (gateMode.getToggleState() ? "GATE " : "EXP ") + gateText, gtText);
+    drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, (float) (capH + rowKnob() + 2), w, (float) capH), (gateMode.getToggleState() ? "GATE " : "EXP ") + gateText, gtText);
 }
 
 } // namespace whitman

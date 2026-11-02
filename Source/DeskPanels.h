@@ -27,6 +27,7 @@ public:
 
     void setDesk (Desk d);
     void refresh();
+    void setScale (float s) { scale = s; }
     int preferredHeight() const;
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -45,6 +46,9 @@ private:
     std::array<juce::TextButton, 4> alt;
     DeskKnob hpf, lpf;
     std::array<juce::TextButton, 3> hpfButton, lpfButton;
+    float scale = 1.0f;
+    int rowKnob() const   { return juce::roundToInt (30.0f * scale); }
+    int smallKnob() const { return juce::roundToInt (22.0f * scale); }
 
     BandEqParams* params() const;
     void changed() { repaint(); if (onChanged) onChanged(); }
@@ -63,7 +67,8 @@ public:
     void setSkin (const DeskSkin* s);
     void refresh();
     void updateMeters();             // the gain-reduction figures (UI timer)
-    int preferredHeight() const { return 2 * 44; }
+    void setScale (float s) { scale = s; }
+    int preferredHeight() const { return 2 * (12 + rowKnob() + 2); }
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -76,6 +81,9 @@ private:
     DeskKnob ratio, threshold, release, range, gateThreshold, gateRelease;
     juce::TextButton fast { "F.ATK" }, gateFast { "F.ATK" }, gateMode { "EXP" };
     float shownGr = 0.0f, shownGate = 0.0f;
+    float scale = 1.0f;
+    int rowKnob() const   { return juce::roundToInt (30.0f * scale); }
+    int smallKnob() const { return juce::roundToInt (22.0f * scale); }
     void changed() { repaint(); if (onChanged) onChanged(); }
 };
 
