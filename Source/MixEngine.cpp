@@ -35,6 +35,8 @@ Routing Routing::make (const juce::StringArray& inputNames, const juce::BigInteg
         {
             strip = activeIndex;
         }
+        if (inputNames[ch].trim().equalsIgnoreCase ("EMERSON return A L")) { r.returnIn[0] = activeIndex; r.isEmerson = true; }
+        if (inputNames[ch].trim().equalsIgnoreCase ("EMERSON return A R")) r.returnIn[1] = activeIndex;
         r.stripOfInput.push_back (strip);
         if (strip >= 0) r.numStrips = juce::jmax (r.numStrips, strip + 1);
         ++activeIndex;
@@ -48,6 +50,8 @@ Routing Routing::make (const juce::StringArray& inputNames, const juce::BigInteg
         const auto n = outputNames[ch].trim();
         if (n.equalsIgnoreCase ("To Hawthorne master L")) r.outLeft = activeIndex;
         if (n.equalsIgnoreCase ("To Hawthorne master R")) r.outRight = activeIndex;
+        if (n.equalsIgnoreCase ("To EMERSON send A L")) r.sendOut[0] = activeIndex;
+        if (n.equalsIgnoreCase ("To EMERSON send A R")) r.sendOut[1] = activeIndex;
         if (found < 2) firstTwo[found++] = activeIndex;
         ++activeIndex;
     }
@@ -405,7 +409,27 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
     // --- echo chamber: the sends, thinned and darkened, a short walk across the room, then the room
     const float retDb = echoReturnDb.load (std::memory_order_relaxed);
     const float rt = info.hasEcho && retDb > echoMinDb ? juce::Decibels::decibelsToGain (retDb) : 0.0f;
-    if (info.hasEcho && (echoUsed || echoRetCur > 0.0f || rt > 0.0f))
+    if (info.hasEcho && echoGoesToEmerson())
+    {
+        // through EMERSON: the echo send goes out to its RETURN A (whatever chamber, plate or tape echo is
+        // on it) and comes back on ECHO RETURN, a block later
+        for (int side = 0; side < 2; ++side)
+            if (juce::isPositiveAndBelow (routing.sendOut[side], numOut) && out[routing.sendOut[side]] != nullptr)
+                juce::FloatVectorOperations::copy (out[routing.sendOut[side]], echo, n);
+        float gret = echoRetCur;
+        const float dret = (rt - gret) * inv;
+        const float* rl = juce::isPositiveAndBelow (routing.returnIn[0], numIn) ? in[routing.returnIn[0]] : nullptr;
+        const float* rr = juce::isPositiveAndBelow (routing.returnIn[1], numIn) ? in[routing.returnIn[1]] : rl;
+        if (rl != nullptr && rr != nullptr)
+            for (int k = 0; k < n; ++k)
+            {
+                gret += dret;
+                mixL[k] += rl[k] * gret;
+                mixR[k] += rr[k] * gret;
+            }
+        echoRetCur = rt;
+    }
+    else if (info.hasEcho && (echoUsed || echoRetCur > 0.0f || rt > 0.0f))
     {
         float* cl = scratch.getWritePointer (2);
         float* cr = scratch.getWritePointer (3);

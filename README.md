@@ -17,6 +17,16 @@ The top bar tells you what WHITMAN sees: `HAWTHORNE ROUTE · REEL: … · 24 TRA
 
 With Hawthorne 1.24 or later, WHITMAN also gets each track's **name** from Hawthorne, lights a red lamp on the strips of **armed** tracks, shows the **reel's name**, and warns you if any track still has MIX on in Hawthorne. A name typed on a WHITMAN strip wins; clear it to follow Hawthorne again.
 
+## Through EMERSON (the FX rack)
+
+[EMERSON](https://github.com/ShallowMouse/Emerson-Releases) sits between Hawthorne and WHITMAN with each track's inserts (PEQUOD's studio processors: EQs, compressors, tape, plates, chambers, echoes), two FX returns and a chain on the mix. Hawthorne Route only takes one program, so with EMERSON it's EMERSON on the driver, and WHITMAN gets its tracks from EMERSON:
+
+1. Start Hawthorne, then **EMERSON** (its device: Hawthorne Route, ASIO).
+2. **WHITMAN → SETTINGS**: device type **EMERSON Link**, device **EMERSON**. Nothing to install: the link is built into both.
+3. Hawthorne's ROUTING stays as above (master L / R inputs from ROUTE master L / R, each track's MIX off).
+
+The strips, track names and armed lamps work as before; the top bar says `VIA EMERSON`. The mix goes back through EMERSON's MIX chain to Hawthorne's master, one buffer later. On the desks with an echo send (the REDDs and TGs), **ECHO** goes to EMERSON's **RETURN A** and comes back on **ECHO RETURN**: put Studio Two's Echo Chamber on it, a plate or a tape echo. SETTINGS → ECHO THROUGH EMERSON switches back to WHITMAN's own chamber. The link also carries a send B / return B for later.
+
 ## Desks
 
 **DESK** picks the console the tracks are mixed on. Like Hawthorne's machines, each desk has its own face and its own sound, and the choice is saved with the mix.

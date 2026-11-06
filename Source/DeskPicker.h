@@ -156,13 +156,36 @@ private:
     DeskPicker picker;
 };
 
-/** SETTINGS: the meters (VU or PPM) and the audio device. */
+/** SETTINGS: the meters (VU or PPM), where the echo goes through EMERSON, and the audio device. */
 class SettingsPanel : public juce::Component
 {
 public:
-    SettingsPanel (juce::AudioDeviceManager& dm, bool ppm, std::function<void (bool)> setPpm)
-        : selector (dm, 0, maxStrips + 3, 2, maxStrips + 2, false, false, false, false), onPpm (std::move (setPpm))
+    SettingsPanel (juce::AudioDeviceManager& dm, bool ppm, std::function<void (bool)> setPpm,
+                   bool echoToEmerson, std::function<void (bool)> setEcho)
+        : selector (dm, 0, maxStrips + 7, 2, maxStrips + 6, false, false, false, false), onPpm (std::move (setPpm)), onEcho (std::move (setEcho))
     {
+        echoLabel.setText ("ECHO THROUGH EMERSON", juce::dontSendNotification);
+        echoLabel.setFont (Pequod::heading (13.0f));
+        echoLabel.setColour (juce::Label::textColourId, Pequod::Colours::mustard);
+        addAndMakeVisible (echoLabel);
+        for (auto* b : { &echoEmerson, &echoOwn })
+        {
+            b->setRadioGroupId (2);
+            b->setClickingTogglesState (true);
+            b->setWantsKeyboardFocus (false);
+            addAndMakeVisible (b);
+        }
+        echoEmerson.setToggleState (echoToEmerson, juce::dontSendNotification);
+        echoOwn.setToggleState (! echoToEmerson, juce::dontSendNotification);
+        echoEmerson.onClick = [this] { if (echoEmerson.getToggleState() && onEcho) onEcho (true); };
+        echoOwn.onClick = [this] { if (echoOwn.getToggleState() && onEcho) onEcho (false); };
+        echoNote.setText ("With the EMERSON device: the ECHO sends go to EMERSON's RETURN A (put an Echo Chamber, a plate or a tape echo on it) "
+                          "and come back on ECHO RETURN, or stay in WHITMAN's own chamber.", juce::dontSendNotification);
+        echoNote.setFont (Pequod::body (12.0f));
+        echoNote.setColour (juce::Label::textColourId, Pequod::Colours::textDim);
+        echoNote.setJustificationType (juce::Justification::topLeft);
+        addAndMakeVisible (echoNote);
+
         meterLabel.setText ("METERS", juce::dontSendNotification);
         meterLabel.setFont (Pequod::heading (13.0f));
         meterLabel.setColour (juce::Label::textColourId, Pequod::Colours::mustard);
@@ -189,7 +212,7 @@ public:
         audioLabel.setColour (juce::Label::textColourId, Pequod::Colours::mustard);
         addAndMakeVisible (audioLabel);
         addAndMakeVisible (selector);
-        setSize (580, 560);
+        setSize (580, 640);
     }
 
     void paint (juce::Graphics& g) override { g.fillAll (Pequod::Colours::panel); }
@@ -205,14 +228,22 @@ public:
         r.removeFromTop (4);
         meterNote.setBounds (r.removeFromTop (34));
         r.removeFromTop (8);
+        echoLabel.setBounds (r.removeFromTop (22));
+        auto erow = r.removeFromTop (28);
+        echoEmerson.setBounds (erow.removeFromLeft (150));
+        erow.removeFromLeft (6);
+        echoOwn.setBounds (erow.removeFromLeft (150));
+        r.removeFromTop (4);
+        echoNote.setBounds (r.removeFromTop (34));
+        r.removeFromTop (8);
         audioLabel.setBounds (r.removeFromTop (22));
         selector.setBounds (r);
     }
 
 private:
-    juce::Label meterLabel, meterNote, audioLabel;
-    juce::TextButton vu { "VU" }, ppmButton { "PPM" };
+    juce::Label meterLabel, meterNote, audioLabel, echoLabel, echoNote;
+    juce::TextButton vu { "VU" }, ppmButton { "PPM" }, echoEmerson { "EMERSON RETURN A" }, echoOwn { "WHITMAN'S CHAMBER" };
     juce::AudioDeviceSelectorComponent selector;
-    std::function<void (bool)> onPpm;
+    std::function<void (bool)> onPpm, onEcho;
 };
 } // namespace whitman

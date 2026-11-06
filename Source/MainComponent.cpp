@@ -1,10 +1,17 @@
 #include "MainComponent.h"
 #include "DeskPicker.h"
+#include "EmersonLink/EmersonLinkDevice.h"
 
 namespace whitman
 {
 
 static constexpr const char* routeDeviceName = "Hawthorne Route";
+
+/** Hawthorne Route, or EMERSON's link (the FX rack between Hawthorne and WHITMAN). */
+static bool isHawthorneDevice (const juce::AudioIODevice* d)
+{
+    return d != nullptr && (d->getName().containsIgnoreCase (routeDeviceName) || d->getTypeName() == EmersonLinkDevice::typeName);
+}
 
 juce::PropertiesFile& MainComponent::settings()
 {
@@ -34,8 +41,9 @@ MainComponent::MainComponent()
         b->setWantsKeyboardFocus (false);
         addAndMakeVisible (b);
     }
-    audioButton.setTooltip ("Settings: the meters (VU or PPM) and the audio device (pick Hawthorne Route, ASIO)");
+    audioButton.setTooltip ("Settings: the meters (VU or PPM) and the audio device (Hawthorne Route, ASIO; or EMERSON Link with the FX rack)");
     VUMeter::setPpm (settings().getBoolValue ("ppm", false));
+    engine.echoToEmerson = settings().getBoolValue ("echoToEmerson", true);
     openButton.setTooltip ("Open a saved mix");
     saveButton.setTooltip ("Save this mix to a file");
     resetButton.setTooltip ("Every fader to 0 dB, pans centred, EQ flat, no echo, nothing muted or soloed");
@@ -94,7 +102,10 @@ MainComponent::~MainComponent()
 void MainComponent::openAudio()
 {
     auto saved = settings().getXmlValue ("audio");
-    deviceManager.initialise (maxStrips + 3, maxStrips + 2, saved.get(), true);
+   #if JUCE_WINDOWS
+    deviceManager.addAudioDeviceType (std::make_unique<EmersonLinkDeviceType>());   // EMERSON, the FX rack
+   #endif
+    deviceManager.initialise (maxStrips + 7, maxStrips + 6, saved.get(), true);
 
     if (saved == nullptr)
     {
@@ -121,7 +132,7 @@ void MainComponent::openAudio()
 void MainComponent::enableAllChannels()
 {
     auto* dev = deviceManager.getCurrentAudioDevice();
-    if (dev == nullptr || ! dev->getName().containsIgnoreCase (routeDeviceName)) return;   // other devices: the user's choice in SETTINGS
+    if (! isHawthorneDevice (dev)) return;   // other devices: the user's choice in SETTINGS
 
     const int ins = dev->getInputChannelNames().size(), outs = dev->getOutputChannelNames().size();
     if (dev->getActiveInputChannels().countNumberOfSetBits() >= ins
@@ -144,6 +155,7 @@ void MainComponent::audioDeviceAboutToStart (juce::AudioIODevice* dev)
                             dev->getOutputChannelNames(), dev->getActiveOutputChannels());
     shownStrips = r.numStrips;
     deviceIsRoute = r.isHawthorneRoute;
+    deviceIsEmerson = r.isEmerson || dev->getTypeName() == EmersonLinkDevice::typeName;
     engine.setRouting (std::move (r));
     engine.prepare (dev->getCurrentSampleRate(), dev->getCurrentBufferSizeSamples());
     routingChanged = true;
@@ -236,6 +248,13 @@ void MainComponent::timerCallback()
     if (++tick % 8 == 0)
     {
         if (tick % 16 == 0) enableAllChannels();
+        // EMERSON's reel got more (or fewer) tracks, or its rate or buffer changed: open its link again
+        if (auto* link = dynamic_cast<EmersonLinkDevice*> (deviceManager.getCurrentAudioDevice()); link != nullptr && link->needsReopen())
+        {
+            deviceManager.closeAudioDevice();
+            deviceManager.restartLastAudioDevice();
+            enableAllChannels();
+        }
         auto now = routeStatus.poll();
         if (! now.sameAs (routeInfo))
         {
@@ -326,6 +345,12 @@ void MainComponent::showAudioSettings()
         settings().setValue ("ppm", ppm);
         settings().saveIfNeeded();
         repaint();
+    }, engine.echoToEmerson.load(), [this] (bool toEmerson)
+    {
+        engine.echoToEmerson = toEmerson;
+        settings().setValue ("echoToEmerson", toEmerson);
+        settings().saveIfNeeded();
+        repaint();
     });
     juce::DialogWindow::LaunchOptions o;
     o.content.setOwned (panel);
@@ -408,6 +433,26 @@ juce::String MainComponent::statusLine (juce::Colour& c) const
         return "NO AUDIO DEVICE" + dot + "click SETTINGS and pick Hawthorne Route (ASIO)";
     }
     const auto rate = juce::String (deviceRate / 1000.0, 1) + " kHz";
+    if (deviceIsEmerson.load())
+    {
+        auto* link = dynamic_cast<EmersonLinkDevice*> (const_cast<juce::AudioDeviceManager&> (deviceManager).getCurrentAudioDevice());
+        if (link != nullptr && ! link->isEmersonRunning())
+        {
+            c = Pequod::Colours::danger;
+            return "EMERSON" + dot + "EMERSON isn't running: start it (it takes Hawthorne Route) and the tracks come in";
+        }
+       #if JUCE_WINDOWS
+        if (! routeInfo.hawthorneRunning)
+        {
+            c = Pequod::Colours::danger;
+            return "EMERSON" + dot + "Hawthorne isn't running: start it and the tracks come in through EMERSON";
+        }
+       #endif
+        c = Pequod::Colours::mustard;
+        const auto reel = routeInfo.hasInfo && routeInfo.reelName.isNotEmpty() ? "REEL: " + routeInfo.reelName.toUpperCase() + dot : juce::String();
+        return "VIA EMERSON" + dot + reel + juce::String (shownStrips.load()) + " TRACKS" + dot + rate
+               + dot + juce::String (juce::CharPointer_UTF8 ("MIX â EMERSON â HAWTHORNE MASTER"));
+    }
     if (deviceIsRoute.load())
     {
        #if JUCE_WINDOWS
@@ -436,11 +481,15 @@ juce::String MainComponent::hintLine() const
             if (twice.isNotEmpty())
                 return "!! Track" + juce::String (twice.containsAnyOf (",-") ? "s " : " ") + twice
                        + " still feed Hawthorne's own mix, so you'll hear them twice: switch their MIX off in Hawthorne's ROUTING";
+            if (deviceIsEmerson.load())
+                return engine.echoToEmerson.load() && deskInfo (engine.getDesk()).hasEcho
+                     ? "The tracks come through EMERSON's inserts; ECHO goes to EMERSON's RETURN A (SETTINGS to keep WHITMAN's chamber)"
+                     : "The tracks come through EMERSON's inserts, and the mix goes back through EMERSON's MIX chain";
             return "In Hawthorne's ROUTING the master L / R inputs should come from ROUTE master L / R";
         }
         return "In Hawthorne's ROUTING: master L / R inputs from ROUTE master L / R, and each track's MIX off (or you'll hear it twice)";
     }
-    return "Hawthorne Route is the ASIO driver Hawthorne installs (Hawthorne > SETTINGS)";
+    return "Hawthorne Route is the ASIO driver Hawthorne installs (Hawthorne > SETTINGS); with EMERSON, pick EMERSON Link > EMERSON";
 }
 
 void MainComponent::paint (juce::Graphics& g)

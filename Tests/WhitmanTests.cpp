@@ -842,6 +842,73 @@ static void testRouteStatus()
    #endif
 }
 
+//==============================================================================
+// Through EMERSON (the FX rack): its link device's channel names (EmersonLinkDevice::inputNames / outputNames)
+static void testEmerson()
+{
+    const int tracks = 8, block = 256;
+    juce::StringArray ins, outs;
+    for (int t = 1; t <= tracks; ++t) ins.add ("Hawthorne track " + juce::String (t));
+    ins.addArray ({ "EMERSON return A L", "EMERSON return A R", "EMERSON return B L", "EMERSON return B R" });
+    outs.addArray ({ "To Hawthorne master L", "To Hawthorne master R", "To EMERSON send A L", "To EMERSON send A R", "To EMERSON send B L", "To EMERSON send B R" });
+
+    auto r = Routing::make (ins, all (ins.size()), outs, all (outs.size()));
+    check (r.isHawthorneRoute && r.isEmerson && r.numStrips == tracks, "EMERSON: one strip per track, the returns aren't strips");
+    check (r.outLeft == 0 && r.outRight == 1 && r.sendOut[0] == 2 && r.sendOut[1] == 3 && r.returnIn[0] == tracks && r.returnIn[1] == tracks + 1,
+           "EMERSON: mix, send A and return A found by name");
+
+    struct ERig
+    {
+        MixEngine engine;
+        juce::AudioBuffer<float> in, out;
+        std::vector<const float*> ip; std::vector<float*> op;
+        ERig (const Routing& r, int nIn, int nOut, int n) : in (nIn, n), out (nOut, n)
+        {
+            engine.setRouting (r);
+            engine.prepare (48000.0, n);
+            in.clear();
+            for (int c = 0; c < nIn; ++c) ip.push_back (in.getReadPointer (c));
+            for (int c = 0; c < nOut; ++c) op.push_back (out.getWritePointer (c));
+        }
+        void run (int b = 4) { for (int i = 0; i < b; ++i) engine.process (ip.data(), (int) ip.size(), op.data(), (int) op.size(), in.getNumSamples()); }
+    };
+
+    {
+        ERig e (r, ins.size(), outs.size(), block);
+        e.engine.desk = (int) Desk::redd51;
+        e.engine.strip (0).echoDb = 0.0f;
+        juce::FloatVectorOperations::fill (e.in.getWritePointer (0), 0.25f, block);
+        e.run();
+        check (e.out.getMagnitude (2, 0, block) > 0.01f && e.out.getMagnitude (3, 0, block) > 0.01f, "EMERSON: the ECHO send goes out to EMERSON's send A");
+        check (e.out.getMagnitude (4, 0, block) == 0.0f, "EMERSON: nothing on send B");
+
+        // what EMERSON's return A sends back comes in on ECHO RETURN
+        ERig a (r, ins.size(), outs.size(), block), b (r, ins.size(), outs.size(), block);
+        for (auto* x : { &a, &b }) { x->engine.desk = (int) Desk::redd51; x->engine.echoReturnDb = 0.0f; }
+        juce::FloatVectorOperations::fill (b.in.getWritePointer (tracks), 0.1f, block);
+        juce::FloatVectorOperations::fill (b.in.getWritePointer (tracks + 1), 0.1f, block);
+        a.run(); b.run();
+        check (b.out.getMagnitude (0, 0, block) > a.out.getMagnitude (0, 0, block) + 0.02f, "EMERSON: return A is heard on ECHO RETURN");
+
+        // WHITMAN's own chamber instead
+        ERig o (r, ins.size(), outs.size(), block);
+        o.engine.desk = (int) Desk::redd51;
+        o.engine.echoToEmerson = false;
+        o.engine.strip (0).echoDb = 0.0f;
+        juce::FloatVectorOperations::fill (o.in.getWritePointer (0), 0.25f, block);
+        o.run();
+        check (o.out.getMagnitude (2, 0, block) == 0.0f, "EMERSON: with WHITMAN's chamber picked, nothing goes to send A");
+    }
+
+    {
+        // Hawthorne Route straight: there's no send A, so the chamber stays WHITMAN's
+        juce::StringArray hi, ho;
+        routeNames (8, hi, ho);
+        auto hr = Routing::make (hi, all (hi.size()), ho, all (ho.size()));
+        check (! hr.isEmerson && hr.sendOut[0] < 0, "Hawthorne Route: no EMERSON sends");
+    }
+}
+
 int main()
 {
     testRouting();
@@ -852,6 +919,7 @@ int main()
     testCircuitSim();
     testMixFiles();
     testRouteStatus();
+    testEmerson();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

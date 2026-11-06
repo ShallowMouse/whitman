@@ -47,6 +47,10 @@ struct Routing
     int outLeft = -1, outRight = -1; // ACTIVE output channel indices for the mix, or -1
     int numStrips = 0;               // strips the console shows
     bool isHawthorneRoute = false;
+    // through EMERSON (the FX rack, WHITMAN's "EMERSON" device): its FX return A carries the echo
+    int sendOut[2] { -1, -1 };       // ACTIVE outputs "To EMERSON send A L / R"
+    int returnIn[2] { -1, -1 };      // ACTIVE inputs "EMERSON return A L / R"
+    bool isEmerson = false;
 
     static Routing make (const juce::StringArray& inputNames, const juce::BigInteger& activeInputs,
                          const juce::StringArray& outputNames, const juce::BigInteger& activeOutputs);
@@ -130,6 +134,8 @@ public:
     std::atomic<int>   desk { (int) Desk::whitman };
     std::atomic<float> masterDb { 0.0f };
     std::atomic<float> echoReturnDb { -6.0f };
+    std::atomic<bool>  echoToEmerson { true };     // through EMERSON: the echo goes to its RETURN A (its chamber), not WHITMAN's
+    bool echoGoesToEmerson() const noexcept { return routing.isEmerson && routing.sendOut[0] >= 0 && echoToEmerson.load (std::memory_order_relaxed); }
     std::atomic<float> spread { 1.0f };            // REDD.51 / TG: stereo width of the mix, 0 (mono) .. 1 (as panned) .. 2 (wide)
     std::atomic<float> mainPresenceDb { 0.0f };    // TG: presence on the main outputs
     std::atomic<int>   mainPresenceFreq { 4 };

@@ -65,6 +65,7 @@ if(WHITMAN_BUILD_APP)
         Source/MainComponent.cpp
         Source/Console.cpp
         Source/DeskPanels.cpp
+        Source/EmersonLink/EmersonLinkDevice.cpp
         Source/Updater.cpp)
 
     target_compile_definitions(Whitman PRIVATE ${COMMON_DEFS}

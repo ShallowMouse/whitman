@@ -38,6 +38,7 @@ private:
 
     std::atomic<int> shownStrips { 0 };              // set when the device starts
     std::atomic<bool> deviceIsRoute { false };
+    std::atomic<bool> deviceIsEmerson { false };   // through EMERSON (the FX rack), which is on Hawthorne Route
     std::atomic<bool> routingChanged { false };
     juce::String deviceName;
     double deviceRate = 0.0;
