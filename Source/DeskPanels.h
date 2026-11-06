@@ -90,4 +90,7 @@ private:
 /** A row's caption: the title on the left, its value on the right. */
 void drawRowCaption (juce::Graphics&, const DeskSkin&, juce::Rectangle<float> row, const juce::String& title, const juce::String& value);
 
+/** An engraved rule across a panel between its sections: a dark groove with a light edge under it. */
+void drawSectionRule (juce::Graphics&, const DeskSkin&, float x0, float x1, float y);
+
 } // namespace whitman

@@ -698,11 +698,13 @@ void ChannelStrip::setDesk (Desk d)
     pan.setTooltip (redd ? "Pan: a switch, 5 positions either side of centre (double-click to centre)" : "Pan (double-click to centre)");
     for (auto* k : { &input, &treble, &presence, &presenceFreq, &bass, &comp, &recovery, &echo, &pan }) k->setSkin (skin);
     fader.setSkin (skin);
+    input.cap = d == Desk::neve8028 ? juce::Colour (0xffb8322a) : juce::Colour();   // the Neve's gain knob is red
 
-    nameLabel.setColour (juce::Label::backgroundColourId, skin->well);
-    nameLabel.setColour (juce::Label::textColourId, skin->bakeliteKnobs ? skin->accent : Pequod::Colours::text);
-    nameLabel.setColour (juce::Label::textWhenEditingColourId, Pequod::Colours::text);
-    dbLabel.setColour (juce::Label::textColourId, skin->engravingDim);
+    nameLabel.setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);   // the tape is painted under it
+    nameLabel.setColour (juce::Label::textColourId, juce::Colour (0xff1c1c22));             // marker ink
+    nameLabel.setColour (juce::Label::textWhenEditingColourId, juce::Colour (0xff1c1c22));
+    nameLabel.setColour (juce::Label::backgroundWhenEditingColourId, juce::Colour (0xfff6f3ea));
+    dbLabel.setColour (juce::Label::textColourId, skin->accent);
     meter.lowColour = skin->bakeliteKnobs ? juce::Colour (0xffcbbf98) : Pequod::Colours::mustardLo.brighter (0.25f);
     meter.midColour = skin->bakeliteKnobs ? skin->accent : Pequod::Colours::mustard;
     const bool lightPanel = skin->panelTop.getPerceivedBrightness() > 0.6f;
@@ -711,7 +713,6 @@ void ChannelStrip::setDesk (Desk d)
         b->setColour (juce::TextButton::buttonColourId, skin->bakeliteKnobs ? juce::Colour (0xff2b2d2b) : Pequod::Colours::panelHi);
         b->setColour (juce::TextButton::textColourOffId, skin->bakeliteKnobs ? (lightPanel ? juce::Colour (0xffeceae2) : skin->engraving) : Pequod::Colours::text);
     }
-    nameLabel.setColour (juce::Label::textColourId, skin->bakeliteKnobs ? (lightPanel ? juce::Colour (0xffeceae2) : skin->accent) : Pequod::Colours::text);
     if (lightPanel) meter.lowColour = juce::Colour (0xff4b5a63), meter.midColour = skin->accent;
     resized();
     repaint();
@@ -795,15 +796,15 @@ void ChannelStrip::drawKnobCaption (juce::Graphics& g, const DeskKnob& k, const 
 {
     if (! k.isVisible()) return;
     auto b = k.getBounds().toFloat();
-    g.setFont (Pequod::heading (10.0f));
+    g.setFont (Pequod::heading (11.0f));
     g.setColour (skin->engraving);
-    g.drawText (title, juce::Rectangle<float> ((float) getWidth(), 11.0f).withPosition (0.0f, b.getY() - 12.0f).reduced (6.0f, 0.0f),
+    g.drawText (title, juce::Rectangle<float> ((float) getWidth(), 12.0f).withPosition (0.0f, b.getY() - 13.0f).reduced (6.0f, 0.0f),
                 skin->bakeliteKnobs ? juce::Justification::centredLeft : juce::Justification::centred, false);
     if (value.isNotEmpty())
     {
-        g.setFont (Pequod::heading (10.0f, false));
+        g.setFont (Pequod::heading (11.0f));
         g.setColour (skin->bakeliteKnobs ? skin->accent : skin->engravingDim);
-        g.drawText (value, juce::Rectangle<float> ((float) getWidth(), 11.0f).withPosition (0.0f, b.getY() - 12.0f).reduced (6.0f, 0.0f),
+        g.drawText (value, juce::Rectangle<float> ((float) getWidth(), 12.0f).withPosition (0.0f, b.getY() - 13.0f).reduced (6.0f, 0.0f),
                     skin->bakeliteKnobs ? juce::Justification::centredRight : juce::Justification::centred, false);
     }
 }
@@ -813,8 +814,8 @@ void ChannelStrip::paint (juce::Graphics& g)
     auto r = getLocalBounds().toFloat().reduced (2.0f, 0.0f);
     drawPanel (g, r, *skin, ! dimmed);
 
-    g.setFont (Pequod::heading (11.0f));
-    g.setColour (skin->engravingDim);
+    g.setFont (Pequod::heading (11.5f));
+    g.setColour (skin->engraving);
     g.drawText ((skin->bakeliteKnobs ? "CH " : "TRK ") + juce::String (index + 1), r.withTop (12.0f).withHeight (14.0f), juce::Justification::centred);
     if (hawthorneArmed)
     {
@@ -824,6 +825,43 @@ void ChannelStrip::paint (juce::Graphics& g)
         g.fillEllipse (lamp.expanded (2.5f));
         g.setColour (juce::Colour (0xffe8432f));
         g.fillEllipse (lamp);
+    }
+
+    // the fader's reading in a recessed window
+    {
+        auto w = dbLabel.getBounds().toFloat().reduced (4.0f, 0.0f);
+        g.setColour (skin->well);
+        g.fillRoundedRectangle (w, 2.5f);
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.drawHorizontalLine ((int) w.getY(), w.getX() + 2.0f, w.getRight() - 2.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.drawHorizontalLine ((int) w.getBottom(), w.getX() + 2.0f, w.getRight() - 2.0f);
+    }
+    // a strip of white tape under the fader, where the engineer wrote the track's name
+    {
+        auto t = nameLabel.getBounds().toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.30f));
+        g.fillRect (t.translated (0.0f, 1.5f));
+        g.setColour (juce::Colour (0xffe9e5d8));
+        g.fillRect (t.expanded (0.0f, 1.0f));
+        g.setColour (juce::Colours::black.withAlpha (0.08f));
+        for (float x : { t.getX(), t.getRight() - 1.0f })            // its torn ends
+            for (float y = t.getY() - 1.0f; y < t.getBottom() + 1.0f; y += 3.0f)
+                g.fillRect (x + (std::fmod (y * 7.0f, 3.0f) - 1.0f), y, 1.0f, 2.0f);
+    }
+
+    if (skin->bakeliteKnobs)
+    {
+        // engraved rules between the sections: input | EQ | dynamics | sends and pan | mute, solo, fader
+        const float x0 = r.getX() + 6.0f, x1 = r.getRight() - 6.0f;
+        auto above = [&] (const juce::Component& c, int caption) { if (c.isVisible()) drawSectionRule (g, *skin, x0, x1, (float) (c.getY() - caption) - 4.0f); };
+        if (bandPanel != nullptr && bandPanel->isVisible()) above (*bandPanel, -1);
+        else if (treble.isVisible()) above (treble, 13);
+        else if (bass.isVisible()) above (bass, 13);
+        if (dynPanel != nullptr && dynPanel->isVisible()) above (*dynPanel, -1);
+        if (comp.isVisible()) above (comp, 13);
+        above (echo, 13);
+        above (mute, 0);
     }
 
     const float p = (float) pan.getValue();
@@ -867,7 +905,8 @@ void ChannelStrip::resized()
     // Lay the controls out at a scale, see how much room the fader gets, then make the fader
     // 3/5 of what it would have had at scale 1 and give the rest to the controls.
     auto full = getLocalBounds().reduced (6, 0);
-    const int bottom = 20 + 12 + (skin->bakeliteKnobs ? 14 : 0);      // the dB readout, its gap, the panel's screw
+    const int screw = skin->bakeliteKnobs ? 16 : 6;
+    const int bottom = 10 + 18 + 6 + 22 + screw;                       // gap, the dB window, gap, the tape, the panel's screw
     auto layoutAt = [&] (float s) -> int                                // returns the y where the fader starts
     {
         auto r = full;
@@ -875,7 +914,6 @@ void ChannelStrip::resized()
         r.removeFromTop (28);
         if (chanVu.isVisible())   { chanVu.setBounds (r.removeFromTop (52)); r.removeFromTop (4); }
         else if (meter.isVisible()) { meter.setBounds (r.removeFromTop (72).withSizeKeepingCentre (34, 72)); r.removeFromTop (4); }
-        nameLabel.setBounds (r.removeFromTop (22));
 
         if (skin->bakeliteKnobs)
         {
@@ -949,14 +987,17 @@ void ChannelStrip::resized()
     const int faderTop1 = layoutAt (1.0f);
     const int faderLen1 = full.getBottom() - bottom - faderTop1;
     const int controls1 = faderTop1 - full.getY();
-    const int target = juce::roundToInt ((float) faderLen1 * 0.6f);        // 3/5 the length
-    const float s = juce::jlimit (1.0f, 1.45f, (float) (controls1 + (faderLen1 - target)) / (float) controls1);
+    // 3/5 the length, but never so short it can't be ridden: on the busiest desks (the SSL) the controls shrink a little instead
+    const int target = juce::jmax (juce::roundToInt ((float) faderLen1 * 0.6f), 150);
+    const float s = juce::jlimit (0.8f, 1.45f, (float) (controls1 + (faderLen1 - target)) / (float) controls1);
     const int faderTop = layoutAt (s);
 
     auto r = full.withTop (faderTop);
-    r.removeFromBottom (skin->bakeliteKnobs ? 14 : 0);
-    dbLabel.setBounds (r.removeFromBottom (20));
-    r.removeFromBottom (12);
+    r.removeFromBottom (screw);
+    nameLabel.setBounds (r.removeFromBottom (22).reduced (1, 0));
+    r.removeFromBottom (6);
+    dbLabel.setBounds (r.removeFromBottom (18));
+    r.removeFromBottom (10);
     // what's left over below the controls goes above the fader, so the faders line up along the bottom
     const int len = juce::jmax (target, juce::jmin (r.getHeight(), target));
     fader.setBounds (r.withTop (r.getBottom() - len));
@@ -1027,7 +1068,7 @@ void MasterStrip::setDesk (Desk d)
     spread.setTooltip (desk == Desk::redd51 ? "SPREADER: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)"
                                             : "SPREAD: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)");
     fader.setSkin (skin);
-    dbLabel.setColour (juce::Label::textColourId, skin->bakeliteKnobs ? skin->accent : Pequod::Colours::text);
+    dbLabel.setColour (juce::Label::textColourId, skin->accent);
     resized();
     repaint();
 }
@@ -1212,6 +1253,17 @@ void MasterStrip::paint (juce::Graphics& g)
     }
 
     if (! corrArea.isEmpty()) paintCorrelator (g);
+
+    // the master fader's reading in a recessed window, like the channels'
+    {
+        auto w = dbLabel.getBounds().toFloat().withSizeKeepingCentre (juce::jmin ((float) dbLabel.getWidth(), 110.0f), (float) dbLabel.getHeight());
+        g.setColour (skin->well);
+        g.fillRoundedRectangle (w, 2.5f);
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.drawHorizontalLine ((int) w.getY(), w.getX() + 2.0f, w.getRight() - 2.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.drawHorizontalLine ((int) w.getBottom(), w.getX() + 2.0f, w.getRight() - 2.0f);
+    }
 
     if (! lampArea.isEmpty())
     {

@@ -7,16 +7,24 @@ static constexpr int capH = 12;
 
 void drawRowCaption (juce::Graphics& g, const DeskSkin& skin, juce::Rectangle<float> row, const juce::String& title, const juce::String& value)
 {
-    const bool light = skin.panelTop.getPerceivedBrightness() > 0.6f;
-    g.setFont (Pequod::heading (9.5f));
+    g.setFont (Pequod::heading (10.5f));
     g.setColour (skin.engraving);
     g.drawText (title, row, juce::Justification::centredLeft, false);
     if (value.isNotEmpty())
     {
-        g.setFont (Pequod::heading (9.5f, false));
-        g.setColour (light ? skin.engraving : skin.accent);
+        g.setFont (Pequod::heading (10.5f));
+        g.setColour (skin.accent);          // values always in the desk's accent, so they read at a glance
         g.drawText (value, row, juce::Justification::centredRight, false);
     }
+}
+
+void drawSectionRule (juce::Graphics& g, const DeskSkin& skin, float x0, float x1, float y)
+{
+    const bool light = skin.panelTop.getPerceivedBrightness() > 0.6f;
+    g.setColour (juce::Colours::black.withAlpha (light ? 0.30f : 0.45f));
+    g.fillRect (x0, std::round (y), x1 - x0, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (light ? 0.45f : 0.10f));
+    g.fillRect (x0, std::round (y) + 1.0f, x1 - x0, 1.0f);
 }
 
 static juce::String gainText (double v)
@@ -145,7 +153,10 @@ void BandEqPanel::setDesk (Desk d)
         alt[bi].setButtonText (juce::String (band->altLabel).replace ("NARROW", "NARR"));
         alt[bi].setTooltip (band->alt == BandDef::Alt::q ? juce::String (band->label) + ": narrow the bandwidth"
                                                          : juce::String (band->label) + ": switch it to a " + juce::String (band->altLabel).toLowerCase());
-        const auto cap = d == Desk::ssl4000e ? sslCaps[b] : juce::Colour();
+        // the SSL's bands are colour-coded; on the Neve the mid band's knob is blue, the shelves grey
+        const auto cap = d == Desk::ssl4000e ? sslCaps[b]
+                       : d == Desk::neve8028 ? (b == 1 ? juce::Colour (0xff2f5d9e) : juce::Colour (0xff8a9097))
+                                             : juce::Colour();
         for (auto* k : { &gain[bi], &freq[bi], &q[bi] }) { k->setSkin (skin); k->cap = cap; }
         slider[bi].setSkin (skin);
         styleButton (alt[bi], *skin);
@@ -331,6 +342,7 @@ void BandEqPanel::paint (juce::Graphics& g)
         else drawRowCaption (g, *skin, row, t, {});
     }
     float y = (float) capH + (float) rowKnob() + 2.0f;
+    drawSectionRule (g, *skin, 0.0f, w, y - 1.5f);      // filters | EQ
     for (int b = 0; b < nb; ++b)
     {
         const auto& band = def->bands[(size_t) b];
