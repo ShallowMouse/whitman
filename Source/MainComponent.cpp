@@ -29,7 +29,7 @@ MainComponent::MainComponent()
         MixState::fromXml (*mix, engine, names);
     currentFile = juce::File (settings().getValue ("file"));
 
-    for (auto* b : { &deskButton, &audioButton, &openButton, &saveButton, &resetButton, &updateButton })
+    for (auto* b : { &audioButton, &openButton, &saveButton, &resetButton, &updateButton })
     {
         b->setWantsKeyboardFocus (false);
         addAndMakeVisible (b);
@@ -39,8 +39,7 @@ MainComponent::MainComponent()
     openButton.setTooltip ("Open a saved mix");
     saveButton.setTooltip ("Save this mix to a file");
     resetButton.setTooltip ("Every fader to 0 dB, pans centred, EQ flat, no echo, nothing muted or soloed");
-    deskButton.setTooltip ("Pick the desk: the console the tracks are mixed on");
-    deskButton.onClick = [this] { showDeskPicker(); };
+    master.onPickDesk = [this] { showDeskPicker(); };     // the desk's name plate, top right, picks the desk
     audioButton.onClick = [this] { showAudioSettings(); };
     openButton.onClick  = [this] { openMix(); };
     saveButton.onClick  = [this] { saveMix(); };
@@ -295,7 +294,6 @@ juce::String MainComponent::tracksStillInHawthorneMix() const
 void MainComponent::applyDesk()
 {
     const auto d = engine.getDesk();
-    deskButton.setButtonText (juce::String ("DESK: ") + deskInfo (d).badge);
     for (auto* s : strips) s->setDesk (d);
     master.setDesk (d);
     resized();
@@ -501,8 +499,6 @@ void MainComponent::resized()
         b->setBounds (bar.removeFromRight (76));
         bar.removeFromRight (6);
     }
-    deskButton.setBounds (bar.removeFromRight (140));
-    bar.removeFromRight (6);
     if (updateButton.isVisible())
     {
         updateButton.setBounds (bar.removeFromRight (150));

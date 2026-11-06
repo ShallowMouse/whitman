@@ -1063,6 +1063,41 @@ void MasterStrip::updateMeter()
 void MasterStrip::mouseDown (const juce::MouseEvent& e)
 {
     if (lampArea.contains (e.getPosition())) { engine.masterClipped = false; clipped = false; repaint (lampArea); }
+    else if (plateArea.contains (e.getPosition()) && onPickDesk) onPickDesk();
+}
+
+void MasterStrip::mouseMove (const juce::MouseEvent& e)
+{
+    const bool over = plateArea.contains (e.getPosition());
+    if (over != plateHover)
+    {
+        plateHover = over;
+        setMouseCursor (over ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        setTooltip (over ? "Change desk: pick the console the tracks are mixed on" : "");
+        repaint (plateArea.expanded (2));
+    }
+}
+
+void MasterStrip::mouseExit (const juce::MouseEvent&)
+{
+    if (plateHover) { plateHover = false; setMouseCursor (juce::MouseCursor::NormalCursor); setTooltip (""); repaint (plateArea.expanded (2)); }
+}
+
+void MasterStrip::paintPlateCue (juce::Graphics& g, juce::Rectangle<float> plate)
+{
+    // a small chevron at the right of the plate says it opens a choice; hovering lights the plate's edge
+    const float cx = plate.getRight() - 12.0f, cy = plate.getCentreY();
+    juce::Path chev;
+    chev.startNewSubPath (cx - 4.0f, cy - 2.0f);
+    chev.lineTo (cx, cy + 2.5f);
+    chev.lineTo (cx + 4.0f, cy - 2.0f);
+    g.setColour (plateHover ? skin->accent : skin->accent.withAlpha (0.55f));
+    g.strokePath (chev, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    if (plateHover)
+    {
+        g.setColour (skin->accent.withAlpha (0.8f));
+        g.drawRoundedRectangle (plate.expanded (1.0f), 3.0f, 1.2f);
+    }
 }
 
 void MasterStrip::paintCorrelator (juce::Graphics& g)
@@ -1117,9 +1152,10 @@ void MasterStrip::paint (juce::Graphics& g)
     if (skin->bakeliteKnobs)
     {
         // an engraved maker's plate
-        auto plate = r.reduced (14.0f, 0.0f).withTop (18.0f).withHeight (34.0f);
-        g.setColour (juce::Colour (0xff1b1d1b));
+        auto plate = plateArea.toFloat();
+        g.setColour (plateHover ? juce::Colour (0xff252825) : juce::Colour (0xff1b1d1b));
         g.fillRoundedRectangle (plate, 2.0f);
+        paintPlateCue (g, plate);
         g.setColour (skin->accent);
         g.setFont (Pequod::heading (17.0f));
         g.drawText (isEmi (desk) ? juce::String ("EMI  ") + info.badge : juce::String (info.name).toUpperCase(), plate.withTrimmedBottom (12.0f), juce::Justification::centred);
@@ -1163,12 +1199,16 @@ void MasterStrip::paint (juce::Graphics& g)
     }
     else
     {
+        auto plate = plateArea.toFloat();
+        g.setColour (plateHover ? skin->well.brighter (0.15f) : skin->well);
+        g.fillRoundedRectangle (plate, 3.0f);
+        paintPlateCue (g, plate);
         g.setFont (Pequod::heading (15.0f));
         g.setColour (skin->accent);
-        g.drawText ("MASTER", r.withTop (8.0f).withHeight (18.0f), juce::Justification::centred);
+        g.drawText (juce::String (info.badge) + "  MASTER", plate.withHeight (22.0f).translated (0.0f, 2.0f), juce::Justification::centred);
         g.setFont (Pequod::body (10.5f));
         g.setColour (skin->engravingDim);
-        g.drawText (juce::CharPointer_UTF8 ("\xe2\x86\x92 HAWTHORNE 2-TRACK"), r.withTop (28.0f).withHeight (14.0f), juce::Justification::centred);
+        g.drawText (juce::CharPointer_UTF8 ("\xe2\x86\x92 HAWTHORNE 2-TRACK"), plate.withTrimmedTop (21.0f), juce::Justification::centred);
     }
 
     if (! corrArea.isEmpty()) paintCorrelator (g);
@@ -1188,7 +1228,9 @@ void MasterStrip::resized()
 {
     if (skin == nullptr) return;
     auto r = getLocalBounds().reduced (10, 0);
-    r.removeFromTop (skin->bakeliteKnobs ? 62 : 50);
+    plateArea = skin->bakeliteKnobs ? getLocalBounds().reduced (16, 0).withTop (18).withHeight (34)
+                                    : getLocalBounds().reduced (16, 0).withTop (8).withHeight (38);
+    r.removeFromTop (skin->bakeliteKnobs ? 62 : 54);
     auto meters = r.removeFromTop (110);
     vuL.setBounds (meters.removeFromLeft (meters.getWidth() / 2 - 3));
     meters.removeFromLeft (6);

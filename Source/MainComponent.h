@@ -43,7 +43,7 @@ private:
     double deviceRate = 0.0;
 
     // top bar
-    juce::TextButton deskButton { "DESK" }, audioButton { "SETTINGS" }, openButton { "OPEN" }, saveButton { "SAVE" },
+    juce::TextButton audioButton { "SETTINGS" }, openButton { "OPEN" }, saveButton { "SAVE" },
                      resetButton { "RESET" }, updateButton { "UPDATE" };
     juce::Rectangle<int> statusArea;
 

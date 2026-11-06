@@ -154,7 +154,7 @@ private:
 };
 
 //==============================================================================
-class MasterStrip : public juce::Component
+class MasterStrip : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     explicit MasterStrip (MixEngine& engine);
@@ -164,9 +164,12 @@ public:
     void updateMeter();
     void paint (juce::Graphics&) override;
     void resized() override;
-    void mouseDown (const juce::MouseEvent&) override;   // click the clip lamp to clear it
+    void mouseDown (const juce::MouseEvent&) override;   // the clip lamp clears it; the desk's plate picks the desk
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
 
     std::function<void()> onChanged;
+    std::function<void()> onPickDesk;                    // the desk's name plate was clicked
 
 private:
     MixEngine& engine;
@@ -179,6 +182,9 @@ private:
     juce::Label dbLabel;
     bool clipped = false;
     juce::Rectangle<int> lampArea, corrArea;     // corrArea: the REDD desks' stereo correlator
+    juce::Rectangle<int> plateArea;               // the desk's name plate: click to change desk
+    bool plateHover = false;
+    void paintPlateCue (juce::Graphics&, juce::Rectangle<float> plate);
     float shownCorr = 1.0f;
     void paintCorrelator (juce::Graphics&);
 };
