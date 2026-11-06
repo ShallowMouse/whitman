@@ -27,7 +27,7 @@ public:
 
     void setDesk (Desk d);
     void refresh();
-    void setScale (float s) { scale = s; }
+    void setScale (float s, int width) { scale = s; availW = width; }
     int preferredHeight() const;
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -47,8 +47,15 @@ private:
     DeskKnob hpf, lpf;
     std::array<juce::TextButton, 3> hpfButton, lpfButton;
     float scale = 1.0f;
-    int rowKnob() const   { return juce::roundToInt (30.0f * scale); }
-    int smallKnob() const { return juce::roundToInt (22.0f * scale); }
+    int availW = 100;
+    // knobs grow with the scale but always fit the strip's width; the space between rows grows more freely
+    int rowKnob() const   { return juce::jmin (juce::roundToInt (30.0f * scale), availW * 34 / 100); }
+    int smallKnob() const { return juce::jmin (juce::roundToInt (22.0f * scale), availW * 24 / 100); }
+    int rowGap() const    { return juce::jmax (2, juce::roundToInt (2.0f + (scale - 1.0f) * 12.0f)); }
+    // the Trident's slide-fader EQ
+    int sliderH() const   { return juce::jlimit (80, 150, juce::roundToInt (96.0f * scale)); }
+    int switchSz() const  { return juce::jlimit (20, availW / 4 - 2, juce::roundToInt (22.0f * scale)); }
+    int buttonH() const   { return juce::jlimit (16, 20, juce::roundToInt (17.0f * scale)); }
 
     BandEqParams* params() const;
     void changed() { repaint(); if (onChanged) onChanged(); }
@@ -67,8 +74,8 @@ public:
     void setSkin (const DeskSkin* s);
     void refresh();
     void updateMeters();             // the gain-reduction figures (UI timer)
-    void setScale (float s) { scale = s; }
-    int preferredHeight() const { return 2 * (12 + rowKnob() + 2); }
+    void setScale (float s, int width) { scale = s; availW = width; }
+    int preferredHeight() const { return 2 * (12 + rowKnob() + rowGap()); }
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -82,8 +89,10 @@ private:
     juce::TextButton fast { "F.ATK" }, gateFast { "F.ATK" }, gateMode { "EXP" };
     float shownGr = 0.0f, shownGate = 0.0f;
     float scale = 1.0f;
-    int rowKnob() const   { return juce::roundToInt (30.0f * scale); }
-    int smallKnob() const { return juce::roundToInt (22.0f * scale); }
+    int availW = 100;
+    int rowKnob() const   { return juce::jmin (juce::roundToInt (30.0f * scale), availW * 30 / 100); }
+    int smallKnob() const { return juce::jmin (juce::roundToInt (22.0f * scale), availW * 22 / 100); }
+    int rowGap() const    { return juce::jmax (2, juce::roundToInt (2.0f + (scale - 1.0f) * 12.0f)); }
     void changed() { repaint(); if (onChanged) onChanged(); }
 };
 

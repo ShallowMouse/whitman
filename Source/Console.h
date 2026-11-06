@@ -183,6 +183,7 @@ private:
     bool clipped = false;
     juce::Rectangle<int> lampArea, corrArea;     // corrArea: the REDD desks' stereo correlator
     juce::Rectangle<int> plateArea;               // the desk's name plate: click to change desk
+    juce::Rectangle<int> tapeArea;                // 'MIX' on tape under the master fader
     bool plateHover = false;
     void paintPlateCue (juce::Graphics&, juce::Rectangle<float> plate);
     float shownCorr = 1.0f;

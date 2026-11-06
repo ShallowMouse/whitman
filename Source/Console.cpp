@@ -899,26 +899,39 @@ void ChannelStrip::paint (juce::Graphics& g)
     }
 }
 
+/** Every desk's faders (channels and master) are the same length, set by the window's height. */
+static int faderLengthFor (int stripHeight) { return juce::jlimit (150, 280, juce::roundToInt ((float) stripHeight * 0.23f)); }
+/** Below the fader: a gap, the dB window, a gap, the tape, the panel's screw. The master lines up with it. */
+static int underFader (const DeskSkin& s) { return 10 + 18 + 6 + 22 + (s.bakeliteKnobs ? 16 : 6); }
+
 void ChannelStrip::resized()
 {
     if (skin == nullptr) return;
-    // Lay the controls out at a scale, see how much room the fader gets, then make the fader
-    // 3/5 of what it would have had at scale 1 and give the rest to the controls.
+    // The fader is the same length on every desk, along the bottom. The controls are laid out at
+    // whatever scale fills the space above it: knobs grow until they fill the strip's width, and
+    // past that only the spacing grows, so a desk with few controls spreads them evenly instead of
+    // leaving a hole.
     auto full = getLocalBounds().reduced (6, 0);
-    const int screw = skin->bakeliteKnobs ? 16 : 6;
-    const int bottom = 10 + 18 + 6 + 22 + screw;                       // gap, the dB window, gap, the tape, the panel's screw
-    auto layoutAt = [&] (float s) -> int                                // returns the y where the fader starts
+    const int faderLen = faderLengthFor (getHeight());
+    const int faderBottom = full.getBottom() - underFader (*skin);
+    const int faderTop = faderBottom - faderLen;
+    const int targetTop = faderTop - 10;
+    const int width = full.getWidth();
+
+    auto layoutAt = [&] (float s, int pad) -> int          // returns the y below the mute / solo buttons
     {
         auto r = full;
         auto px = [s] (int v) { return juce::roundToInt ((float) v * s); };
+        auto gapPx = [s] (int v) { return juce::roundToInt ((float) v * (1.0f + (s - 1.0f) * 1.6f)); };   // spacing grows faster than the knobs
         r.removeFromTop (28);
         if (chanVu.isVisible())   { chanVu.setBounds (r.removeFromTop (52)); r.removeFromTop (4); }
         else if (meter.isVisible()) { meter.setBounds (r.removeFromTop (72).withSizeKeepingCentre (34, 72)); r.removeFromTop (4); }
+        r.removeFromTop (pad);
 
         if (skin->bakeliteKnobs)
         {
             const bool many = comp.isVisible();          // the TG has more rows: smaller knobs
-            const int k = juce::jmin (r.getWidth() - 4, px (many ? 34 : 40)), gap = px (many ? 14 : 16);
+            const int k = juce::jmin (width - 30, px (many ? 34 : 40), 56), gap = juce::jmax (16, gapPx (many ? 15 : 17));
             auto knobRow = [&] (DeskKnob& knob)
             {
                 if (! knob.isVisible()) return juce::Rectangle<int>();
@@ -931,31 +944,36 @@ void ChannelStrip::resized()
             {
                 auto row = knobRow (knob);
                 if (row.isEmpty()) return;
-                knob.setBounds (row.removeFromLeft (k + 4).withSizeKeepingCentre (k, k));
+                // the knob centred in the left two thirds, its switch or small knob in the right third
+                auto side = row.removeFromRight (juce::jmax (30, row.getWidth() / 3));
+                knob.setBounds (row.withSizeKeepingCentre (k, k));
+                const int sk = juce::jmin (side.getWidth() - 2, px (26), 36);
                 if (button != nullptr && small != nullptr)
                 {
-                    button->setBounds (row.removeFromTop (16).reduced (1, 0));
-                    small->setBounds (row.withSizeKeepingCentre (px (24), px (24)));
+                    auto b = side.withSizeKeepingCentre (side.getWidth(), 16 + 2 + sk);
+                    button->setBounds (b.removeFromTop (16).reduced (1, 0));
+                    b.removeFromTop (2);
+                    small->setBounds (b.withSizeKeepingCentre (sk, sk));
                 }
-                else if (button != nullptr) button->setBounds (row.withSizeKeepingCentre (row.getWidth(), 18));
-                else if (small != nullptr)  small->setBounds (row.withSizeKeepingCentre (px (28), px (28)));
+                else if (button != nullptr) button->setBounds (side.withSizeKeepingCentre (side.getWidth() - 2, 18));
+                else if (small != nullptr)  small->setBounds (side.withSizeKeepingCentre (sk, sk));
             };
             if (bandPanel != nullptr && bandPanel->isVisible())
             {
-                const int kk = juce::jmin (r.getWidth() - 4, px (30)), gg = px (13);
+                const int kk = juce::jmin (width - 40, px (30), 46), gg = juce::jmax (14, gapPx (14));
                 auto smallRow = [&] (DeskKnob& knob)
                 {
                     r.removeFromTop (gg);
                     knob.setBounds (r.removeFromTop (kk).withSizeKeepingCentre (kk, kk));
                 };
                 smallRow (input);
-                r.removeFromTop (4);
-                bandPanel->setScale (s);
+                r.removeFromTop (juce::jmax (6, gapPx (6)));
+                bandPanel->setScale (s, width);
                 bandPanel->setBounds (r.removeFromTop (bandPanel->preferredHeight()));
-                if (dynPanel->isVisible()) { dynPanel->setScale (s); dynPanel->setBounds (r.removeFromTop (dynPanel->preferredHeight())); }
+                if (dynPanel->isVisible()) { dynPanel->setScale (s, width); dynPanel->setBounds (r.removeFromTop (dynPanel->preferredHeight())); }
                 smallRow (echo);
                 smallRow (pan);
-                r.removeFromTop (8);
+                r.removeFromTop (juce::jmax (10, gapPx (10)));
             }
             else
             {
@@ -966,41 +984,49 @@ void ChannelStrip::resized()
                 withSide (comp, &compMode, &recovery);
                 knobRow (echo);
                 knobRow (pan);
-                r.removeFromTop (8);
+                r.removeFromTop (juce::jmax (10, gapPx (10)));
             }
         }
         else
         {
-            r.removeFromTop (px (6));
-            pan.setBounds (r.removeFromTop (px (44)).withSizeKeepingCentre (px (44), px (44)));
-            r.removeFromTop (px (16));
+            r.removeFromTop (6);
+            pan.setBounds (r.removeFromTop (54).withSizeKeepingCentre (54, 54));
+            r.removeFromTop (16);
         }
 
         auto ms = r.removeFromTop (22);
         mute.setBounds (ms.removeFromLeft (ms.getWidth() / 2 - 1));
         ms.removeFromLeft (2);
         solo.setBounds (ms);
-        r.removeFromTop (8);
-        return r.getY();
+        return ms.getBottom();
     };
 
-    const int faderTop1 = layoutAt (1.0f);
-    const int faderLen1 = full.getBottom() - bottom - faderTop1;
-    const int controls1 = faderTop1 - full.getY();
-    // 3/5 the length, but never so short it can't be ridden: on the busiest desks (the SSL) the controls shrink a little instead
-    const int target = juce::jmax (juce::roundToInt ((float) faderLen1 * 0.6f), 150);
-    const float s = juce::jlimit (0.8f, 1.45f, (float) (controls1 + (faderLen1 - target)) / (float) controls1);
-    const int faderTop = layoutAt (s);
+    if (skin->bakeliteKnobs)
+    {
+        // the largest scale that fits
+        float lo = 0.6f, hi = 3.0f;
+        if (layoutAt (hi, 0) <= targetTop) lo = hi;
+        for (int i = 0; i < 24 && hi - lo > 0.002f; ++i)
+        {
+            const float mid = 0.5f * (lo + hi);
+            if (layoutAt (mid, 0) <= targetTop) lo = mid; else hi = mid;
+        }
+        layoutAt (lo, 0);
+    }
+    else
+    {
+        // the plain desk has only a pan pot: keep it, and mute / solo, just above the fader
+        const int slack = juce::jmax (0, targetTop - layoutAt (1.0f, 0));
+        layoutAt (1.0f, slack);
+    }
 
     auto r = full.withTop (faderTop);
-    r.removeFromBottom (screw);
-    nameLabel.setBounds (r.removeFromBottom (22).reduced (1, 0));
-    r.removeFromBottom (6);
-    dbLabel.setBounds (r.removeFromBottom (18));
-    r.removeFromBottom (10);
-    // what's left over below the controls goes above the fader, so the faders line up along the bottom
-    const int len = juce::jmax (target, juce::jmin (r.getHeight(), target));
-    fader.setBounds (r.withTop (r.getBottom() - len));
+    fader.setBounds (r.withHeight (faderLen));
+    r = full.withTop (faderBottom);
+    r.removeFromTop (10);
+    dbLabel.setBounds (r.removeFromTop (18));
+    r.removeFromTop (6);
+    nameLabel.setBounds (r.removeFromTop (22).reduced (1, 0));
 }
 
 //==============================================================================
@@ -1254,9 +1280,21 @@ void MasterStrip::paint (juce::Graphics& g)
 
     if (! corrArea.isEmpty()) paintCorrelator (g);
 
+    // the mix's tape, like the channels'
+    {
+        auto t = tapeArea.toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.30f));
+        g.fillRect (t.translated (0.0f, 1.5f));
+        g.setColour (juce::Colour (0xffe9e5d8));
+        g.fillRect (t.expanded (0.0f, 1.0f));
+        g.setColour (juce::Colour (0xff1c1c22));
+        g.setFont (Pequod::heading (13.0f));
+        g.drawText ("MIX", t, juce::Justification::centred);
+    }
+
     // the master fader's reading in a recessed window, like the channels'
     {
-        auto w = dbLabel.getBounds().toFloat().withSizeKeepingCentre (juce::jmin ((float) dbLabel.getWidth(), 110.0f), (float) dbLabel.getHeight());
+        auto w = dbLabel.getBounds().toFloat().withSizeKeepingCentre (juce::jmin ((float) dbLabel.getWidth(), 150.0f), (float) dbLabel.getHeight());
         g.setColour (skin->well);
         g.fillRoundedRectangle (w, 2.5f);
         g.setColour (juce::Colours::black.withAlpha (0.5f));
@@ -1315,13 +1353,15 @@ void MasterStrip::resized()
         mainPresence.setBounds (row.removeFromLeft (44));
         mainPresenceFreq.setBounds (row.removeFromRight (28).withSizeKeepingCentre (28, 28));
     }
-    r.removeFromTop (30);
-    if (skin->bakeliteKnobs) r.removeFromBottom (14);
-    dbLabel.setBounds (r.removeFromBottom (22));
-    r.removeFromBottom (8);
-    // the same 3/5 length as the channels' faders, along the bottom
-    const int len = juce::roundToInt ((float) getHeight() * 0.36f);
-    fader.setBounds (r.withTop (r.getBottom() - juce::jmin (r.getHeight(), len)).withSizeKeepingCentre (96, juce::jmin (r.getHeight(), len)));
+    // the same length as the channels' faders, and lined up with them: their dB windows and tape too
+    const int faderBottom = getHeight() - underFader (*skin);
+    const int len = faderLengthFor (getHeight());
+    fader.setBounds (juce::Rectangle<int> (0, faderBottom - len, getWidth(), len).withSizeKeepingCentre (96, len));
+    auto u = getLocalBounds().reduced (10, 0).withTop (faderBottom);
+    u.removeFromTop (10);
+    dbLabel.setBounds (u.removeFromTop (18));
+    u.removeFromTop (6);
+    tapeArea = u.removeFromTop (22).withSizeKeepingCentre (juce::jmin (u.getWidth(), 150), 22);
 }
 
 } // namespace whitman

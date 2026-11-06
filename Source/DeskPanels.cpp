@@ -242,8 +242,8 @@ int BandEqPanel::preferredHeight() const
     if (def == nullptr) return 0;
     const int nb = (int) def->bands.size();
     if (def->sliders)
-        return capH + 84 + 22 + 11 + 2 * 18 + 4;            // captions, sliders, frequency switches and their readings, filter buttons
-    return capH + rowKnob() + 2 + nb * (capH + rowKnob() + 2);   // filters, then a row per band
+        return capH + sliderH() + switchSz() + 4 + 11 + rowGap() + 2 * (10 + buttonH() + 2) + 4;   // captions, sliders, switches and readings, filter buttons
+    return capH + rowKnob() + rowGap() + nb * (capH + rowKnob() + rowGap());   // filters, then a row per band
 }
 
 void BandEqPanel::resized()
@@ -254,20 +254,20 @@ void BandEqPanel::resized()
     if (def->sliders)
     {
         r.removeFromTop (capH);
-        auto sl = r.removeFromTop (84);
-        auto sw = r.removeFromTop (22);
+        auto sl = r.removeFromTop (sliderH());
+        auto sw = r.removeFromTop (switchSz() + 4);
         r.removeFromTop (11);                // the switches' readings
         const int w = r.getWidth() / nb;
         for (int b = 0; b < nb; ++b)
         {
             slider[(size_t) b].setBounds (sl.removeFromLeft (w).reduced (2, 0));
-            freq[(size_t) b].setBounds (sw.removeFromLeft (w).withSizeKeepingCentre (20, 20));
+            freq[(size_t) b].setBounds (sw.removeFromLeft (w).withSizeKeepingCentre (switchSz(), switchSz()));
         }
-        r.removeFromTop (2);
+        r.removeFromTop (rowGap());
         for (auto* arr : { &hpfButton, &lpfButton })
         {
-            auto row = r.removeFromTop (16);
-            row.removeFromLeft (24);         // room for "HPF" / "LPF"
+            r.removeFromTop (10);            // "HIGH PASS" / "LOW PASS" over the row
+            auto row = r.removeFromTop (buttonH());
             const int bw = row.getWidth() / 3;
             for (auto& b : *arr) b.setBounds (row.removeFromLeft (bw).reduced (1, 0));
             r.removeFromTop (2);
@@ -284,7 +284,7 @@ void BandEqPanel::resized()
         lpf.setBounds (row.withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
         if (! lpf.isVisible()) hpf.setBounds (half.getUnion (row).withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
     }
-    r.removeFromTop (2);
+    r.removeFromTop (rowGap());
     for (int b = 0; b < nb; ++b)
     {
         const auto bi = (size_t) b;
@@ -296,7 +296,7 @@ void BandEqPanel::resized()
         row.removeFromLeft (2);
         if (q[bi].isVisible())   q[bi].setBounds (row.removeFromLeft (smallKnob() + 2).withSizeKeepingCentre (smallKnob(), smallKnob()));
         if (alt[bi].isVisible()) alt[bi].setBounds (row.withSizeKeepingCentre (row.getWidth(), 15));
-        r.removeFromTop (2);
+        r.removeFromTop (rowGap());
     }
 }
 
@@ -319,13 +319,14 @@ void BandEqPanel::paint (juce::Graphics& g)
             static const char* shortName[4] = { "TREB", "HI", "LO", "BASS" };
             g.drawText (shortName[b], juce::Rectangle<float> (cw * (float) b, 0.0f, cw, (float) capH), juce::Justification::centred, false);
             g.setColour (skin->accent);
-            g.drawText (freqText (b), juce::Rectangle<float> (cw * (float) b, (float) capH + 84.0f + 22.0f, cw, 10.0f),
+            g.drawText (freqText (b), juce::Rectangle<float> (cw * (float) b, (float) (capH + sliderH() + switchSz() + 4), cw, 10.0f),
                         juce::Justification::centred, false);
         }
         g.setColour (skin->engraving);
         g.setFont (Pequod::heading (8.5f));
-        g.drawText ("HP", juce::Rectangle<float> (0.0f, (float) hpfButton[0].getY(), 22.0f, 16.0f), juce::Justification::centredLeft, false);
-        g.drawText ("LP", juce::Rectangle<float> (0.0f, (float) lpfButton[0].getY(), 22.0f, 16.0f), juce::Justification::centredLeft, false);
+        g.setFont (Pequod::heading (8.0f));
+        g.drawText ("HIGH PASS", juce::Rectangle<float> (0.0f, (float) hpfButton[0].getY() - 10.0f, w, 10.0f), juce::Justification::centred, false);
+        g.drawText ("LOW PASS", juce::Rectangle<float> (0.0f, (float) lpfButton[0].getY() - 10.0f, w, 10.0f), juce::Justification::centred, false);
         return;
     }
 
@@ -341,15 +342,15 @@ void BandEqPanel::paint (juce::Graphics& g)
         }
         else drawRowCaption (g, *skin, row, t, {});
     }
-    float y = (float) capH + (float) rowKnob() + 2.0f;
-    drawSectionRule (g, *skin, 0.0f, w, y - 1.5f);      // filters | EQ
+    float y = (float) (capH + rowKnob() + rowGap());
+    drawSectionRule (g, *skin, 0.0f, w, y - (float) rowGap() * 0.5f - 1.0f);      // filters | EQ
     for (int b = 0; b < nb; ++b)
     {
         const auto& band = def->bands[(size_t) b];
         juce::String title = juce::String (band.label) + " " + freqText (b);
         if (band.qKnob) title << " Q" << juce::String (band.qAt ((float) q[(size_t) b].getValue()), 1);
         drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, y, w, (float) capH), title, gainText (p->gain[(size_t) b].load()));
-        y += (float) capH + (float) rowKnob() + 2.0f;
+        y += (float) (capH + rowKnob() + rowGap());
     }
 }
 
@@ -450,7 +451,7 @@ void SslDynamicsPanel::resized()
             btn2->setBounds (side.reduced (0, 1));
         }
         else btn1.setBounds (side.withSizeKeepingCentre (side.getWidth(), 15));
-        r.removeFromTop (2);
+        r.removeFromTop (rowGap());
     };
     layoutRow (ratio, threshold, release, fast, nullptr);
     layoutRow (range, gateThreshold, gateRelease, gateMode, &gateFast);
@@ -466,7 +467,7 @@ void SslDynamicsPanel::paint (juce::Graphics& g)
     drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, 0.0f, w, (float) capH), "COMP " + ratioText + " " + juce::String (threshold.getValue(), 0), grText);
     const auto gateText = range.getValue() < 0.05 ? juce::String ("OFF") : juce::String (juce::roundToInt (range.getValue())) + "dB " + juce::String (gateThreshold.getValue(), 0);
     const auto gtText = shownGate >= 0.05f ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")) + juce::String (shownGate, 1) : juce::String();
-    drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, (float) (capH + rowKnob() + 2), w, (float) capH), (gateMode.getToggleState() ? "GATE " : "EXP ") + gateText, gtText);
+    drawRowCaption (g, *skin, juce::Rectangle<float> (0.0f, (float) (capH + rowKnob() + rowGap()), w, (float) capH), (gateMode.getToggleState() ? "GATE " : "EXP ") + gateText, gtText);
 }
 
 } // namespace whitman
