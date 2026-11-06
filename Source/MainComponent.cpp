@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "Melville.h"
 #include "DeskPicker.h"
 
 namespace whitman
@@ -94,9 +95,12 @@ MainComponent::~MainComponent()
 void MainComponent::openAudio()
 {
     auto saved = settings().getXmlValue ("audio");
-    deviceManager.initialise (maxStrips + 3, maxStrips + 2, saved.get(), true);
+    // inside MELVILLE: MELVILLE's WHITMAN device, with the same channels as on its own
+    const bool hosted = melville::attach (deviceManager, "whitman");
+    if (! hosted)
+        deviceManager.initialise (maxStrips + 3, maxStrips + 2, saved.get(), true);
 
-    if (saved == nullptr)
+    if (saved == nullptr && ! hosted)
     {
         // first run: Hawthorne Route if it's installed
         for (auto* type : deviceManager.getAvailableDeviceTypes())
@@ -161,7 +165,7 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     enableAllChannels();
     routingChanged = true;
-    if (auto state = deviceManager.createStateXml())
+    if (auto state = melville::isHosted() ? nullptr : deviceManager.createStateXml())
         settings().setValue ("audio", state.get());
 }
 
@@ -215,7 +219,7 @@ void MainComponent::saveSettings()
     if (auto x = MixState::toXml (engine, names))
         settings().setValue ("mix", x.get());
     settings().setValue ("file", currentFile.getFullPathName());
-    if (auto state = deviceManager.createStateXml())
+    if (auto state = melville::isHosted() ? nullptr : deviceManager.createStateXml())
         settings().setValue ("audio", state.get());
     settings().saveIfNeeded();
     dirty = false;
