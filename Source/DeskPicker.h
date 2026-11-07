@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Console.h"
+#include "Melville.h"
 
 namespace whitman
 {
@@ -207,6 +208,9 @@ public:
         r.removeFromTop (8);
         audioLabel.setBounds (r.removeFromTop (22));
         selector.setBounds (r);
+        // inside MELVILLE there's no device to pick here (MELVILLE's INTERFACE does it)
+        audioLabel.setVisible (! melville::isHosted());
+        selector.setVisible (! melville::isHosted());
     }
 
 private:
