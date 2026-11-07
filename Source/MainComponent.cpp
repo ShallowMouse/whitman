@@ -82,6 +82,9 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
+   #if defined (MELVILLE_HOSTED) && MELVILLE_HOSTED
+    melville::detach (deviceManager);     // (and out of MELVILLE's session)
+   #endif
     stopTimer();
     saveSettings();
     deviceManager.removeChangeListener (this);
@@ -97,6 +100,11 @@ void MainComponent::openAudio()
     auto saved = settings().getXmlValue ("audio");
     // inside MELVILLE: MELVILLE's WHITMAN device, with the same channels as on its own
     const bool hosted = melville::attach (deviceManager, "whitman");
+   #if defined (MELVILLE_HOSTED) && MELVILLE_HOSTED
+    melville::addToSession (deviceManager, {
+        [this] { return MixState::toXml (engine, names); },
+        [this] (const juce::XmlElement& x) { if (MixState::fromXml (x, engine, names)) { applyDesk(); refreshAll(); saveSettings(); } } });
+   #endif
     if (! hosted)
         deviceManager.initialise (maxStrips + 3, maxStrips + 2, saved.get(), true);
 
