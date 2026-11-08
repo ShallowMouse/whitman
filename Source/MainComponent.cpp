@@ -100,6 +100,7 @@ void MainComponent::openAudio()
     auto saved = settings().getXmlValue ("audio");
     // inside MELVILLE: MELVILLE's WHITMAN device, with the same channels as on its own
     const bool hosted = melville::attach (deviceManager, "whitman");
+    if (hosted) { openButton.setVisible (false); saveButton.setVisible (false); }   // (the mix is kept with the reel: MELVILLE's LIBRARY)
    #if defined (MELVILLE_HOSTED) && MELVILLE_HOSTED
     melville::addToSession (deviceManager, {
         [this] { return MixState::toXml (engine, names); },
@@ -195,6 +196,10 @@ void MainComponent::rebuildStrips()
         auto* s = strips.add (new ChannelStrip (engine, strips.size(), names));
         s->setDesk (engine.getDesk());
         s->onChanged = [this] { mixChanged(); };
+       #if defined (MELVILLE_HOSTED) && MELVILLE_HOSTED
+        if (melville::isHosted())
+            s->onRenameTrack = [] (int t, const juce::String& n) { if (auto& f = melville::tracks().rename) f (t, n); };
+       #endif
         const int t = strips.size() - 1;
         if (routeInfo.hasInfo && t < routeInfo.trackNames.size())
             s->setHawthorneTrack (routeInfo.trackNames[t], routeInfo.armed[(size_t) t]);
@@ -202,6 +207,7 @@ void MainComponent::rebuildStrips()
     }
     for (int i = 0; i < strips.size(); ++i)
         strips[i]->setVisible (i < n);
+    tracksRev = -1;          // (colours onto any new strips)
 
     const int w = DeskSkin::of (engine.getDesk()).stripWidth;
     stripHolder.setSize (juce::jmax (1, n * w), juce::jmax (1, viewport.getMaximumVisibleHeight()));
@@ -235,6 +241,15 @@ void MainComponent::saveSettings()
 
 void MainComponent::timerCallback()
 {
+   #if defined (MELVILLE_HOSTED) && MELVILLE_HOSTED
+    if (const int rev = melville::tracks().rev.load(); rev != tracksRev)     // the reel's track colours
+    {
+        tracksRev = rev;
+        auto& tk = melville::tracks();
+        for (int t = 0; t < strips.size(); ++t)
+            strips[t]->setTrackColour (tk.colour ? tk.colour (t) : juce::Colours::transparentBlack);
+    }
+   #endif
     if (routingChanged.exchange (false))
         rebuildStrips();
 
@@ -420,6 +435,12 @@ juce::String MainComponent::statusLine (juce::Colour& c) const
         return "NO AUDIO DEVICE" + dot + "click SETTINGS and pick Hawthorne Route (ASIO)";
     }
     const auto rate = juce::String (deviceRate / 1000.0, 1) + " kHz";
+    if (melville::isHosted())
+    {
+        c = Pequod::Colours::mustard;
+        const auto reel = routeInfo.hasInfo && routeInfo.reelName.isNotEmpty() ? "REEL: " + routeInfo.reelName.toUpperCase() + dot : juce::String();
+        return reel + juce::String (shownStrips.load()) + " TRACKS" + dot + rate;
+    }
     if (deviceIsRoute.load())
     {
        #if JUCE_WINDOWS
@@ -440,6 +461,8 @@ juce::String MainComponent::statusLine (juce::Colour& c) const
 
 juce::String MainComponent::hintLine() const
 {
+    if (melville::isHosted())
+        return "A strip per tape track. Its sends, returns and mix are on MELVILLE's PATCHBAY";
     if (deviceIsRoute.load())
     {
         if (routeInfo.hawthorneRunning && routeInfo.hasInfo)
@@ -508,6 +531,7 @@ void MainComponent::resized()
     bar.removeFromLeft (200);
     for (auto* b : { &audioButton, &saveButton, &openButton, &resetButton })
     {
+        if (! b->isVisible()) continue;
         b->setBounds (bar.removeFromRight (76));
         bar.removeFromRight (6);
     }

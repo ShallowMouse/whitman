@@ -89,6 +89,7 @@ private:
     juce::String hintLine() const;
 
     juce::PropertiesFile& settings();
+    int tracksRev = -1;
 };
 
 } // namespace whitman

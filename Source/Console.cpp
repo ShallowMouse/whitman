@@ -542,6 +542,13 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     {
         // a name typed here wins; clear it (or type Hawthorne's) to follow Hawthorne again
         auto t = nameLabel.getText().trim().substring (0, 24);
+        if (onRenameTrack)
+        {
+            // inside MELVILLE one name per track, kept on the reel
+            if (t.isNotEmpty() && t != hawthorneName) onRenameTrack (index, t);
+            showName();
+            return;
+        }
         if (t == juce::String (index + 1) || t == hawthorneName) t = {};
         names.set (index, t);
         showName();
@@ -813,6 +820,11 @@ void ChannelStrip::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat().reduced (2.0f, 0.0f);
     drawPanel (g, r, *skin, ! dimmed);
+    if (! trackColour.isTransparent())
+    {
+        g.setColour (trackColour);
+        g.fillRect (r.withHeight (5.0f));        // the track's colour, across the top
+    }
 
     g.setFont (Pequod::heading (11.5f));
     g.setColour (skin->engraving);

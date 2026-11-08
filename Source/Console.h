@@ -117,6 +117,8 @@ public:
     void setDesk (Desk d);
     /** What Hawthorne says about this track (its name; armed to record). */
     void setHawthorneTrack (const juce::String& name, bool armed);
+    void setTrackColour (juce::Colour c) { if (c != trackColour) { trackColour = c; repaint(); } }   // (MELVILLE: the reel's)
+    std::function<void (int, const juce::String&)> onRenameTrack;     // MELVILLE: the name goes on the reel
     void refreshFromEngine();         // after a mix is opened / reset
     void updateMeter();               // UI timer
     void paint (juce::Graphics&) override;
@@ -125,6 +127,7 @@ public:
     std::function<void()> onChanged;  // something the mix file keeps changed
 
 private:
+    juce::Colour trackColour { juce::Colours::transparentBlack };
     MixEngine& engine;
     const int index;
     juce::StringArray& names;
