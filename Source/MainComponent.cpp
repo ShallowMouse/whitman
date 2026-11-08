@@ -30,11 +30,12 @@ MainComponent::MainComponent()
         MixState::fromXml (*mix, engine, names);
     currentFile = juce::File (settings().getValue ("file"));
 
-    for (auto* b : { &audioButton, &openButton, &saveButton, &resetButton, &updateButton })
+    for (auto* b : std::initializer_list<juce::TextButton*> { &audioButton, &openButton, &saveButton, &resetButton, &updateButton })
     {
         b->setWantsKeyboardFocus (false);
         addAndMakeVisible (b);
     }
+    for (auto* k : { &audioButton, &openButton, &saveButton, &resetButton }) k->setPartColour (partColour());
     audioButton.setTooltip ("Settings: the meters (VU or PPM) and the audio device (pick Hawthorne Route, ASIO)");
     VUMeter::setPpm (settings().getBoolValue ("ppm", false));
     openButton.setTooltip ("Open a saved mix");
@@ -482,23 +483,15 @@ void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (Pequod::Colours::bg);
     g.setColour (DeskSkin::of (engine.getDesk()).frame);
-    g.fillRect (getLocalBounds().withTrimmedTop (66));
+    g.fillRect (getLocalBounds().withTrimmedTop (partui::headerHeight + 2));
 
     // top bar
-    auto bar = getLocalBounds().removeFromTop (64);
-    g.setColour (Pequod::Colours::rail);
-    g.fillRect (bar);
-    g.setColour (Pequod::Colours::mustard);
-    g.fillRect (bar.removeFromBottom (2));
-
-    auto logo = bar.reduced (18, 0).removeFromLeft (190);
-    g.setFont (Pequod::heading (30.0f));
-    g.setColour (Pequod::Colours::mustard);
-    g.drawText ("WHITMAN", logo.withTrimmedBottom (14), juce::Justification::bottomLeft);
-    g.setFont (Pequod::heading (11.0f, false));
-    g.setColour (Pequod::Colours::textDim);
-    g.drawText ("PEQUOD  " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + "  MIXER  " + juce::String (JUCE_APPLICATION_VERSION_STRING),
-                logo.withTrimmedTop (42), juce::Justification::topLeft);
+    auto bar = getLocalBounds().removeFromTop (partui::headerHeight);
+    partui::drawBar (g, bar, partColour());
+    partui::drawWordmark (g, bar.reduced (18, 0).removeFromLeft (190), "WHITMAN",
+                          melville::isHosted() ? juce::String ("MIXER")
+                                               : "PEQUOD  " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + "  MIXER  " + juce::String (JUCE_APPLICATION_VERSION_STRING),
+                          partColour(), Pequod::heading (30.0f));
 
     juce::Colour c;
     const auto status = statusLine (c);
@@ -527,20 +520,15 @@ void MainComponent::paint (juce::Graphics& g)
 void MainComponent::resized()
 {
     auto r = getLocalBounds();
-    auto bar = r.removeFromTop (64).reduced (14, 14);
+    auto bar = r.removeFromTop (partui::headerHeight).withTrimmedBottom (2).reduced (14, 0);
     bar.removeFromLeft (200);
-    for (auto* b : { &audioButton, &saveButton, &openButton, &resetButton })
-    {
-        if (! b->isVisible()) continue;
-        b->setBounds (bar.removeFromRight (76));
-        bar.removeFromRight (6);
-    }
+    bar = partui::placeKeys (bar, { &audioButton, &saveButton, &openButton, &resetButton });   // (the keys every part has, right)
     if (updateButton.isVisible())
     {
-        updateButton.setBounds (bar.removeFromRight (150));
+        updateButton.setBounds (bar.removeFromRight (150).withSizeKeepingCentre (150, partui::keyHeight));
         bar.removeFromRight (6);
     }
-    statusArea = bar.withTrimmedRight (10).expanded (0, 8);
+    statusArea = bar.withTrimmedRight (10).withSizeKeepingCentre (bar.getWidth() - 10, 40);
 
     r.reduce (8, 8);
     master.setBounds (r.removeFromRight (DeskSkin::of (engine.getDesk()).masterWidth));

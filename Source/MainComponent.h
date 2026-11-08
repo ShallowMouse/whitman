@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "PartHeader.h"
+#include "Melville.h"
 #include "MixEngine.h"
 #include "MixState.h"
 #include "Console.h"
@@ -43,8 +45,11 @@ private:
     double deviceRate = 0.0;
 
     // top bar
-    juce::TextButton audioButton { "SETTINGS" }, openButton { "OPEN" }, saveButton { "SAVE" },
-                     resetButton { "RESET" }, updateButton { "UPDATE" };
+    partui::Key audioButton { "Settings", partui::Icon::settings }, openButton { "Open", partui::Icon::open },
+                saveButton { "Save", partui::Icon::save }, resetButton { "Reset", partui::Icon::reset };
+    juce::TextButton updateButton { "UPDATE" };
+    /** This part's colour: its own inside MELVILLE, PEQUOD's mustard on its own. */
+    juce::Colour partColour() const { return melville::isHosted() ? partui::accent ("whitman") : Pequod::Colours::mustard; }
     juce::Rectangle<int> statusArea;
 
     // console
