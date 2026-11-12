@@ -66,7 +66,7 @@ struct BandEqDef
 const BandEqDef* bandEqOf (Desk d);
 
 /** Each band-EQ desk keeps its own settings, so switching desks doesn't lose them. */
-constexpr int numBandEqDesks = 4;
+constexpr int numBandEqDesks = 6;
 inline int bandEqSlot (Desk d)
 {
     switch (d)
@@ -75,12 +75,14 @@ inline int bandEqSlot (Desk d)
         case Desk::neve8028: return 1;
         case Desk::ssl4000e: return 2;
         case Desk::neotek:   return 3;
+        case Desk::redd17:   return 4;
+        case Desk::ua610:    return 5;
         default:             return -1;
     }
 }
 inline Desk bandEqDesk (int slot)
 {
-    static const Desk d[numBandEqDesks] = { Desk::tridentA, Desk::neve8028, Desk::ssl4000e, Desk::neotek };
+    static const Desk d[numBandEqDesks] = { Desk::tridentA, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::redd17, Desk::ua610 };
     return d[juce::jlimit (0, numBandEqDesks - 1, slot)];
 }
 

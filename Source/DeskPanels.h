@@ -28,6 +28,7 @@ public:
     void setDesk (Desk d);
     void refresh();
     void setScale (float s, int width) { scale = s; availW = width; }
+    int filterRowH() const;     // the filters row, 0 for a desk without filters
     int preferredHeight() const;
     void paint (juce::Graphics&) override;
     void resized() override;

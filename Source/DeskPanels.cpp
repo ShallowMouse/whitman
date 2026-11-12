@@ -134,7 +134,7 @@ void BandEqPanel::setDesk (Desk d)
         const auto* band = has ? &def->bands[bi] : nullptr;
         gain[bi].setVisible (has && ! def->sliders);
         slider[bi].setVisible (has && def->sliders);
-        freq[bi].setVisible (has);
+        freq[bi].setVisible (has && (band->swept() || band->numSteps() > 1));    // (a fixed frequency has no switch)
         q[bi].setVisible (has && band->qKnob);
         alt[bi].setVisible (has && band->alt != BandDef::Alt::none);
         if (! has) continue;
@@ -146,7 +146,7 @@ void BandEqPanel::setDesk (Desk d)
             s->setTooltip (juce::String (band->label) + ": boost / cut (double-click for flat)");
         }
         if (band->swept()) freq[bi].setRange (0.0, 1.0, 0.001);
-        else               freq[bi].setRange (0.0, band->numSteps() - 1, 1.0);
+        else               freq[bi].setRange (0.0, juce::jmax (1, band->numSteps() - 1), 1.0);
         freq[bi].setDoubleClickReturnValue (true, band->defaultFreq());
         freq[bi].setTooltip (juce::String (band->label) + (band->swept() ? ": frequency" : ": frequency switch"));
         q[bi].setTooltip (juce::String (band->label) + ": Q (bandwidth) - narrower to the right, with more range");
@@ -237,13 +237,18 @@ juce::String BandEqPanel::filterText (const FilterDef& f, float pos) const
     return hzText (hz >= 1000.0f ? std::round (hz / 100.0f) * 100.0f : std::round (hz));
 }
 
+int BandEqPanel::filterRowH() const
+{
+    return def != nullptr && (def->hpf.kind != FilterDef::Kind::none || def->lpf.kind != FilterDef::Kind::none) ? capH + rowKnob() + rowGap() : 0;
+}
+
 int BandEqPanel::preferredHeight() const
 {
     if (def == nullptr) return 0;
     const int nb = (int) def->bands.size();
     if (def->sliders)
         return capH + sliderH() + switchSz() + 4 + 11 + rowGap() + 2 * (10 + buttonH() + 2) + 4;   // captions, sliders, switches and readings, filter buttons
-    return capH + rowKnob() + rowGap() + nb * (capH + rowKnob() + rowGap());   // filters, then a row per band
+    return filterRowH() + nb * (capH + rowKnob() + rowGap());   // filters (if any), then a row per band
 }
 
 void BandEqPanel::resized()
@@ -275,16 +280,17 @@ void BandEqPanel::resized()
         return;
     }
 
-    // filters row
-    r.removeFromTop (capH);
+    // filters row (the desks without filters have none)
+    if (filterRowH() > 0)
     {
+        r.removeFromTop (capH);
         auto row = r.removeFromTop (rowKnob());
         auto half = row.removeFromLeft (row.getWidth() / 2);
         hpf.setBounds (half.withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
         lpf.setBounds (row.withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
         if (! lpf.isVisible()) hpf.setBounds (half.getUnion (row).withSizeKeepingCentre (smallKnob() + 2, smallKnob() + 2));
+        r.removeFromTop (rowGap());
     }
-    r.removeFromTop (rowGap());
     for (int b = 0; b < nb; ++b)
     {
         const auto bi = (size_t) b;
@@ -331,6 +337,7 @@ void BandEqPanel::paint (juce::Graphics& g)
     }
 
     // filters
+    if (filterRowH() > 0)
     {
         auto row = juce::Rectangle<float> (0.0f, 0.0f, w, (float) capH);
         juce::String t = juce::String (def->hpf.label) + " " + filterText (def->hpf, p->hpfPos.load());
@@ -342,8 +349,8 @@ void BandEqPanel::paint (juce::Graphics& g)
         }
         else drawRowCaption (g, *skin, row, t, {});
     }
-    float y = (float) (capH + rowKnob() + rowGap());
-    drawSectionRule (g, *skin, 0.0f, w, y - (float) rowGap() * 0.5f - 1.0f);      // filters | EQ
+    float y = (float) filterRowH();
+    if (y > 0.0f) drawSectionRule (g, *skin, 0.0f, w, y - (float) rowGap() * 0.5f - 1.0f);      // filters | EQ
     for (int b = 0; b < nb; ++b)
     {
         const auto& band = def->bands[(size_t) b];

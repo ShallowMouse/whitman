@@ -45,6 +45,18 @@ const DeskSkin& DeskSkin::of (Desk d)
         { C (0xff1e2022), C (0xffb2b4b3), C (0xff9fa2a1), C (0xff5d6062),
           C (0xff16181a), C (0xff3a3e41), C (0xff2f6fae), C (0xff16181a),
           true, false, true, 104, 236, 2, "ELECTRICAL AUDIO  -  CHICAGO", 2 },
+        // RCA 76-D: RCA's dark grey broadcast enamel, cream engraving, black bakelite knobs, a VU
+        { C (0xff1d1f21), C (0xff55595c), C (0xff45494c), C (0xff2c2f31),
+          C (0xfff0eadb), C (0xffc9c3b3), C (0xffe8c46a), C (0xff16181a),
+          true, false, true, 94, 236, 0, "SUN STUDIO  -  MEMPHIS" },
+        // REDD.17: the EMI family's grey-green, a shade lighter
+        { C (0xff262824), C (0xff7c8276), C (0xff676d61), C (0xff3c4039),
+          C (0xfff2eedf), C (0xffd4d0bf), C (0xfff0dcaa), C (0xff1c1d1a),
+          true, false, true, 94, 236, 0, "ABBEY ROAD" },
+        // Universal Audio 610: blue-grey hammertone, cream legends, black knobs
+        { C (0xff1c2024), C (0xff5f6f7c), C (0xff4e5c68), C (0xff323c45),
+          C (0xfff1ede2), C (0xffcfd2cf), C (0xffe9c46a), C (0xff151a1e),
+          true, false, true, 94, 236, 0, "UNITED RECORDING  -  HOLLYWOOD" },
     };
     return skins[juce::jlimit (0, numDesks - 1, (int) d)];
 }
@@ -694,15 +706,17 @@ void ChannelStrip::setDesk (Desk d)
         : "GAIN into the channel amp (double-click for 0). Push it and the transistors get edgy; bring the fader down to match.");
     const bool tg = info.eq == EqStyle::tgMk1 || info.eq == EqStyle::tgMk4;
     const bool redd = info.eq == EqStyle::redd;
+    const bool stepped = redd || info.steppedPan;
+    pan.setVisible (! info.mono);
     // the REDDs' tone controls and pan pots were switches: EQ in 2 dB steps, pan 5 positions either side of centre
     treble.setRange (-10.0, 10.0, redd ? 2.0 : 0.5);
     bass.setRange (-10.0, 10.0, redd ? 2.0 : 0.5);
-    pan.setRange (-1.0, 1.0, redd ? 0.2 : 0.01);
+    pan.setRange (-1.0, 1.0, stepped ? 0.2 : 0.01);
     bass.setTooltip (tg ? "BASS: a 50 Hz shelf (double-click for flat)"
                         : "BASS, switched in 2 dB steps (double-click for flat). Classic: a 100 Hz shelf. Pop: a broader shelf that reaches up to about 500 Hz.");
     treble.setTooltip (tg ? "TREBLE (double-click for flat): the lift is a bell at 5 kHz, the cut a shelf at 10 kHz"
                           : "TREBLE, switched in 2 dB steps (double-click for flat). Pop: lift is a broad bell at 4.7 kHz, cut a shelf from about 2 kHz. Classic: a 10 kHz shelf.");
-    pan.setTooltip (redd ? "Pan: a switch, 5 positions either side of centre (double-click to centre)" : "Pan (double-click to centre)");
+    pan.setTooltip (stepped ? "Pan: a switch, 5 positions either side of centre (double-click to centre)" : "Pan (double-click to centre)");
     for (auto* k : { &input, &treble, &presence, &presenceFreq, &bass, &comp, &recovery, &echo, &pan }) k->setSkin (skin);
     fader.setSkin (skin);
     input.cap = d == Desk::neve8028 ? juce::Colour (0xffb8322a) : juce::Colour();   // the Neve's gain knob is red
@@ -1103,7 +1117,7 @@ void MasterStrip::setDesk (Desk d)
     mainPresenceFreq.setVisible (info.hasMainPresence);
     mainPresence.setSkin (skin);
     mainPresenceFreq.setSkin (skin);
-    spread.setTooltip (desk == Desk::redd51 ? "SPREADER: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)"
+    spread.setTooltip (desk == Desk::redd51 || desk == Desk::redd17 ? "SPREADER: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)"
                                             : "SPREAD: the width of the stereo mix - 0 mono, the middle as panned, right of it wider (double-click for as panned)");
     fader.setSkin (skin);
     dbLabel.setColour (juce::Label::textColourId, skin->accent);
@@ -1259,7 +1273,7 @@ void MasterStrip::paint (juce::Graphics& g)
         knobLabel (echoReturn, juce::String (info.sendName) + " RETURN", sendText (echoReturn.getValue()));
         {
             const float sp = (float) spread.getValue();
-            knobLabel (spread, desk == Desk::redd51 ? "SPREADER" : "SPREAD", sp < 0.025f ? juce::String ("MONO") : juce::String (juce::roundToInt (sp * 100.0f)) + "%");
+            knobLabel (spread, desk == Desk::redd51 || desk == Desk::redd17 ? "SPREADER" : "SPREAD", sp < 0.025f ? juce::String ("MONO") : juce::String (juce::roundToInt (sp * 100.0f)) + "%");
         }
         if (mainPresence.isVisible())
         {

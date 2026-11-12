@@ -314,7 +314,8 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
         const float g = audible ? dbToGain (s.gainDb.load (std::memory_order_relaxed)) : 0.0f;
         float pl, pr;
         float panPos = s.pan.load (std::memory_order_relaxed);
-        if (info.eq == EqStyle::redd) panPos = std::round (panPos * 5.0f) / 5.0f;    // the REDD pan pots: 5 steps a side
+        if (info.eq == EqStyle::redd || info.steppedPan) panPos = std::round (panPos * 5.0f) / 5.0f;    // the REDD pan pots: 5 steps a side
+        if (info.mono) panPos = 0.0f;                                                                    // a mono desk: no pan pots
         panGains (panPos, pl, pr);
         const float tl = g * pl, tr = g * pr;
         const float echoDb = s.echoDb.load (std::memory_order_relaxed);

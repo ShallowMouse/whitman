@@ -7,14 +7,15 @@ namespace whitman
 
 /** The desks WHITMAN can be. Saved by number in mix files: only ever add to the end. */
 enum class Desk { whitman = 0, redd51 = 1, redd37 = 2, tg12345 = 3, tg12345mk4 = 4,    // tg12345 = the Mk I
-                  tridentA = 5, neve8028 = 6, ssl4000e = 7, neotek = 8 };
-constexpr int numDesks = 9;
+                  tridentA = 5, neve8028 = 6, ssl4000e = 7, neotek = 8,
+                  rca76d = 9, redd17 = 10, ua610 = 11 };
+constexpr int numDesks = 12;
 
 /** The channel EQ's layout.
     redd:  bass 100 Hz shelf; treble Pop (lift a bell at 5 kHz, cut a 10 kHz shelf) or Classic (10 kHz shelf)
     tgMk1: bass 50 Hz shelf; treble (lift a bell at 5 kHz, cut a 10 kHz shelf)
     tgMk4: bass 50 Hz shelf; presence at 8 positions (7 bells, then a 10 kHz shelf) - no treble */
-enum class EqStyle { none, redd, tgMk1, tgMk4, bands };     // bands: BandEq.h (Trident, Neve, SSL, Neotek)
+enum class EqStyle { none, redd, tgMk1, tgMk4, bands };     // bands: BandEq.h (REDD.17, UA 610, Trident, Neve, SSL, Neotek)
 
 struct DeskInfo
 {
@@ -37,6 +38,8 @@ struct DeskInfo
     float lowCutHz, highCutHz;             // the amps' and transformers' bandwidth
     bool sslDynamics = false;              // the SSL channel compressor and expander / gate
     const char* sendName = "ECHO";         // the send to the chamber
+    bool mono = false;                     // one output: no pan pots, the mix comes out the same both sides
+    bool steppedPan = false;               // switched pan pots (5 positions a side), as on the REDDs
 };
 
 /*  Sources, and the calls made where they disagree:
@@ -55,7 +58,19 @@ struct DeskInfo
       Presence (Mk II on): 500, 800, 1.2k, 1.8k, 2.8k, 4.2k, 6.8k (Chandler: 6.5k) bells, then a 10 kHz shelf.
       Limiter: MusicTech 8:1, Waves 7:1 - 8:1 used. Recovery: six positions, 0.1 to 5 s (the in-between values are
       spread evenly here). Faders: no source found; straight faders drawn.
-    - GAIN (all EMI desks) isn't a control on the real desks: it stands in for how hard the amps were driven.  */
+    - GAIN (all EMI desks) isn't a control on the real desks: it stands in for how hard the amps were driven.
+    - RCA 76-D (Sun): Sound On Sound and scottymoore.net (a used RCA 76-D broadcast console from about 1954 - before
+      it a five-input Presto - with two Ampex 350s, the second for the slapback); Vintage Guitar (Matt Ross-Spang:
+      four mic inputs); thebdr.net (RCA's 76 series announced in 1940). A mono valve broadcast board,
+      transformer-coupled, with rotary mixing pots and no EQ. Sun's echo was tape slapback, not a send, so it has
+      none here. The amp figures are estimates.
+    - EMI REDD.17: Abbey Road "#GearThatMadeUs" (1958, Peter Burkowitz and Lenn Page, four built, EMI's first
+      console in desk form); Recording magazine (eight inputs, mono / stereo out, Siemens V72 amps, a simple
+      two-band EQ); Vintage King (two buses; Spreaders on channels 1-2 and 7-8). The EQ's frequencies aren't
+      published: a 10 kHz and a 100 Hz shelf (the REDD.37's Classic module) are assumed.
+    - Universal Audio 610: Bill Putnam's modular valve channel amplifier, 1958, built into one-off consoles at
+      United and Western in Hollywood (UA; Paul McManus's history). The 610-A module's EQ: a 10 kHz high shelf
+      and a 100 Hz low shelf (UA's 610 manual), stepped to 9 dB (the 2-610's steps). Amp figures estimated.  */
 inline const DeskInfo& deskInfo (Desk d)
 {
     static const DeskInfo desks[numDesks] = {
@@ -155,6 +170,37 @@ inline const DeskInfo& deskInfo (Desk d)
           "Clean and honest, with very low distortion and noise. It lets the room, the mics and the playing do the work.",
           true, true, EqStyle::bands, false, false, false, false,
           0.99f, 0.01f, 0.995f, 0.0f, 5.0f, 0.0f, false, "REVERB" },
+
+        { "RCA 76-D", "76-D",
+          "RCA  -  USA  -  Sun Studio, Memphis, from about 1954",
+          "A valve radio broadcast console that Sam Phillips bought used for Sun Studio, replacing a five-input Presto. "
+          "Mono, transformer-coupled, a handful of mic inputs on big rotary pots and no EQ. With it and two Ampex 350s - "
+          "the second for the slapback echo - he recorded Elvis, Johnny Cash, Carl Perkins and Jerry Lee Lewis.",
+          "Mono and valve: thick, warm and compressed when pushed, with a narrow, radio-ish bandwidth and the iron of "
+          "its transformers in the low end. Everything comes out the middle.",
+          true, false, EqStyle::none, false, false, false, false,
+          0.62f, 0.50f, 0.92f, 0.25f, 40.0f, 10000.0f, false, "ECHO", true, false },
+
+        { "EMI REDD.17", "REDD.17",
+          "EMI (Record Engineering Development Dept.)  -  England  -  Abbey Road, 1958",
+          "EMI's first console in desk form, designed by Peter Burkowitz and Lenn Page for stereo; four were built, for "
+          "Abbey Road's mixing rooms and for recording away. Eight mic inputs into two buses, Siemens V72 valve "
+          "amplifiers, a simple two-band EQ on every channel, echo sends, and Spreaders for the stereo mic pairs. It "
+          "was relied on through the late 50s, before 4-track brought the REDD.37.",
+          "Valve and V72: warm, thick and lopsided when driven, with second harmonic and an early squash. Two gentle "
+          "shelves for tone.",
+          true, true, EqStyle::bands, false, true, false, false,
+          0.68f, 0.48f, 0.94f, 0.22f, 14.0f, 12000.0f, false, "ECHO", false, true },
+
+        { "Universal Audio 610", "610",
+          "Universal Audio (Bill Putnam)  -  Hollywood, USA  -  United Recording, from 1958",
+          "Bill Putnam built his own consoles: one-offs for United and Western in Hollywood, each made from his modular "
+          "610 valve channel amplifiers - the start of the modular console. Sinatra, Nat King Cole, Ray Charles and later "
+          "the Beach Boys were recorded through them. The 610's EQ is two shelves: 10 kHz and 100 Hz.",
+          "Valve and transformers, but smooth: a rich, round low end and a gentle sheen on top, with a warm "
+          "even-harmonic thickness when you push the GAIN. The sound of the great late-50s vocal records.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.84f, 0.30f, 0.96f, 0.12f, 10.0f, 0.0f },
     };
     return desks[juce::jlimit (0, numDesks - 1, (int) d)];
 }
@@ -170,7 +216,7 @@ inline float presenceHz (int i)
 }
 inline bool presenceIsShelf (int i) { return i >= numPresenceFreqs - 1; }
 inline bool isTg (Desk d)           { return d == Desk::tg12345 || d == Desk::tg12345mk4; }
-inline bool isEmi (Desk d)          { return d == Desk::redd37 || d == Desk::redd51 || isTg (d); }
+inline bool isEmi (Desk d)          { return d == Desk::redd17 || d == Desk::redd37 || d == Desk::redd51 || isTg (d); }
 constexpr int numRecoveries = 6;
 inline float recoverySeconds (int i)
 {

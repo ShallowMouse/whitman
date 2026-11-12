@@ -88,6 +88,21 @@ inline AmpSpec ampSpecOf (Desk d, bool main)
         case Desk::neotek:
             a = AmpSpec { 26.0f, 0.96f, 20.0f, 0.002f, 0.0f, 30.0f, 0.0f, 3.0f, 0.0f };
             break;
+        case Desk::rca76d:
+            // estimated: a 1940s broadcast board - modest headroom, valves and plenty of iron, narrow
+            a = main ? AmpSpec { 20.0f, 0.50f, 16.0f, 0.60f, 0.50f, 40.0f, 0.45f, 40.0f, 10000.0f }
+                     : AmpSpec { 17.0f, 0.45f, 16.0f, 0.80f, 0.50f, 40.0f, 0.50f, 40.0f, 10000.0f };
+            break;
+        case Desk::redd17:
+            // the V72s, as the REDD.37 (the same amplifiers)
+            a = main ? AmpSpec { 20.0f, 0.55f, 4.0f, 0.20f, 0.0f, 30.0f, 0.40f, 18.0f, 0.0f }
+                     : AmpSpec { 16.0f, 0.50f, 4.0f, 0.40f, 0.0f, 30.0f, 0.40f, 18.0f, 0.0f };
+            break;
+        case Desk::ua610:
+            // estimated: valve channel amps with transformers, more headroom than the broadcast boards
+            a = main ? AmpSpec { 24.0f, 0.65f, 20.0f, 0.15f, 0.15f, 30.0f, 0.25f, 12.0f, 0.0f }
+                     : AmpSpec { 22.0f, 0.60f, 20.0f, 0.30f, 0.20f, 30.0f, 0.30f, 12.0f, 0.0f };
+            break;
     }
     return a;
 }

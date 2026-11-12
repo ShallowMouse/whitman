@@ -31,7 +31,7 @@ public:
     {
         int y = 40;
         // oldest first, the clean desk last
-        for (auto d : { Desk::redd37, Desk::redd51, Desk::tg12345, Desk::tridentA, Desk::tg12345mk4, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::whitman })
+        for (auto d : { Desk::rca76d, Desk::redd17, Desk::ua610, Desk::redd37, Desk::redd51, Desk::tg12345, Desk::tridentA, Desk::tg12345mk4, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::whitman })
             for (auto* c : cards)
                 if (c->desk == d) { c->setBounds (10, y, getWidth() - 20, 224); y += 236; }
     }

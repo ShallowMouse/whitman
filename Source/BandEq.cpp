@@ -78,8 +78,29 @@ const BandEqDef* bandEqOf (Desk d)
         return e;
     }();
 
+    static const BandEqDef redd17 = []
+    {
+        // two fixed shelves (the frequencies assumed - see Desk.h)
+        BandEqDef e;
+        BandDef hi { "TREBLE", Shape::highShelf6, { 10000 } };  hi.maxDb = 10;
+        BandDef lo { "BASS",   Shape::lowShelf6,  { 100 } };    lo.maxDb = 10;
+        e.bands = { hi, lo };
+        return e;
+    }();
+    static const BandEqDef ua610 = []
+    {
+        // the 610-A: a 10 kHz high shelf and a 100 Hz low shelf
+        BandEqDef e;
+        BandDef hi { "HIGH", Shape::highShelf, { 10000 } };  hi.maxDb = 9; hi.q = 0.55f;
+        BandDef lo { "LOW",  Shape::lowShelf,  { 100 } };    lo.maxDb = 9; lo.q = 0.55f;
+        e.bands = { hi, lo };
+        return e;
+    }();
+
     switch (d)
     {
+        case Desk::redd17:    return &redd17;
+        case Desk::ua610:     return &ua610;
         case Desk::tridentA:  return &trident;
         case Desk::neve8028:  return &neve;
         case Desk::ssl4000e:  return &ssl;

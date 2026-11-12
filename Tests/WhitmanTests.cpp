@@ -485,7 +485,10 @@ static void testRedd37AndTg()
              "TG SPREAD: 0 is mono, 1 is as panned, 2 is wider (R/L " + juce::String (mono, 2) + " / " + juce::String (normal, 2)
              + " / " + juce::String (wide, 2) + ")");
       check (std::abs (rOverL (0.0f, Desk::redd51) - 1.0f) < 0.05f && std::abs (rOverL (0.0f, Desk::redd37)) < 0.02f,
-             "REDD.51's Spreader works; the REDD.37 has none"); }
+             "REDD.51's Spreader works; the REDD.37 has none");
+      const float rca = rOverL (1.0f, Desk::rca76d), r17 = rOverL (0.0f, Desk::redd17);
+      check (std::abs (rca - 1.0f) < 0.01f, "RCA 76-D is mono: a track panned hard left comes out both sides (R/L " + juce::String (rca, 2) + ")");
+      check (std::abs (r17 - 1.0f) < 0.05f, "REDD.17's Spreader works (R/L at 0: " + juce::String (r17, 2) + ")"); }
 
     { MixEngine a, b; juce::StringArray na, nb;
       MixState::reset (a, na);
