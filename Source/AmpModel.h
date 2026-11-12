@@ -43,7 +43,11 @@ struct AmpSpec
     - SSL: the 611G line amp (the nearest published SSL figures): clipping above +26.5 dBu, 20 Hz-20 kHz
       +0/-0.3 dB. Op-amps, no transformers in the channel: a hard knee, almost no distortion before it.
     - Neotek: 'very low distortion' (Electrical Audio), transformerless: as the SSL, estimated.
-    - Trident A-Range: discrete class A with transformers: estimated between the Neve and the SSL.
+    - Trident A-Range: discrete class A with transformers. Trident's reissue of the A-Range channel (built
+      to the original's design): +24 dBu maximum, under 0.05 % THD at +4 dBu, 20 Hz-20 kHz +/-1 dB - the model
+      clips at +24 with 0.08 % second at +20 (about 0.013 % at +4).
+    - EMI TG12345: the Mk II manual's amplifiers run on +/-20 V rails (so about +24 dBu inside before they clip),
+      with -10 dBV as the internal standard level.
     - EMI REDD.47 (REDD.51's channel, inter and line amps): EF86 pentode into a paralleled E88CC with
       negative feedback; its two stages' second harmonics cancel, leaving mostly the third (Phaedrus Audio,
       from EMI's description); 34 / 40 / 46 dB gain; -3 dB at 7 Hz and 40 kHz, 0.15 % THD at +20 dBu out
@@ -89,9 +93,12 @@ inline AmpSpec ampSpecOf (Desk d, bool main)
             a = AmpSpec { 26.0f, 0.96f, 20.0f, 0.002f, 0.0f, 30.0f, 0.0f, 3.0f, 0.0f };
             break;
         case Desk::rca76d:
-            // estimated: a 1940s broadcast board - modest headroom, valves and plenty of iron, narrow
-            a = main ? AmpSpec { 20.0f, 0.50f, 16.0f, 0.60f, 0.50f, 40.0f, 0.45f, 40.0f, 10000.0f }
-                     : AmpSpec { 17.0f, 0.45f, 16.0f, 0.80f, 0.50f, 40.0f, 0.50f, 40.0f, 10000.0f };
+            // RCA's own figures for the 76 consolettes (76-B2 and 76-C instruction books): the line amp's
+            // normal output +18 dBm at 0.5 % harmonic distortion, 0.65 % at 50 Hz (the iron), and +26 dBm at
+            // 1 %; mic to line within 2 dB from 30 Hz. Single-ended valves: second-harmonic led. The top
+            // isn't legible in the scans: 15 kHz, as its contemporaries (GE's BC-1A: 50 to 15,000 cycles).
+            a = main ? AmpSpec { 27.5f, 0.55f, 18.0f, 0.45f, 0.15f, 50.0f, 0.30f, 30.0f, 15000.0f }
+                     : AmpSpec { 24.0f, 0.50f, 18.0f, 0.60f, 0.15f, 50.0f, 0.35f, 30.0f, 15000.0f };
             break;
         case Desk::redd17:
             // the V72s, as the REDD.37 (the same amplifiers)
@@ -99,9 +106,12 @@ inline AmpSpec ampSpecOf (Desk d, bool main)
                      : AmpSpec { 16.0f, 0.50f, 4.0f, 0.40f, 0.0f, 30.0f, 0.40f, 18.0f, 0.0f };
             break;
         case Desk::ua610:
-            // estimated: valve channel amps with transformers, more headroom than the broadcast boards
-            a = main ? AmpSpec { 24.0f, 0.65f, 20.0f, 0.15f, 0.15f, 30.0f, 0.25f, 12.0f, 0.0f }
-                     : AmpSpec { 22.0f, 0.60f, 20.0f, 0.30f, 0.20f, 30.0f, 0.30f, 12.0f, 0.0f };
+            // Paul McManus (owner and historian of an original 1960 United console, UA's webzine): the
+            // plug-in output line amps deliver 'a healthy +30 dBm'. The 610 channel's own output stage is
+            // lower - about +21 (its 15k:600 output transformer, from builders' measurements on GroupDIY);
+            // distortion figures for the originals aren't published: estimated, second-harmonic led.
+            a = main ? AmpSpec { 30.0f, 0.65f, 20.0f, 0.10f, 0.10f, 30.0f, 0.20f, 12.0f, 0.0f }
+                     : AmpSpec { 21.5f, 0.55f, 18.0f, 0.35f, 0.20f, 30.0f, 0.30f, 12.0f, 0.0f };
             break;
     }
     return a;

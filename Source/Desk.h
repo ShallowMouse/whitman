@@ -63,14 +63,15 @@ struct DeskInfo
       it a five-input Presto - with two Ampex 350s, the second for the slapback); Vintage Guitar (Matt Ross-Spang:
       four mic inputs); thebdr.net (RCA's 76 series announced in 1940). A mono valve broadcast board,
       transformer-coupled, with rotary mixing pots and no EQ. Sun's echo was tape slapback, not a send, so it has
-      none here. The amp figures are estimates.
+      none here. The amps follow RCA's instruction books for the 76 series (AmpModel.h).
     - EMI REDD.17: Abbey Road "#GearThatMadeUs" (1958, Peter Burkowitz and Lenn Page, four built, EMI's first
       console in desk form); Recording magazine (eight inputs, mono / stereo out, Siemens V72 amps, a simple
       two-band EQ); Vintage King (two buses; Spreaders on channels 1-2 and 7-8). The EQ's frequencies aren't
       published: a 10 kHz and a 100 Hz shelf (the REDD.37's Classic module) are assumed.
     - Universal Audio 610: Bill Putnam's modular valve channel amplifier, 1958, built into one-off consoles at
       United and Western in Hollywood (UA; Paul McManus's history). The 610-A module's EQ: a 10 kHz high shelf
-      and a 100 Hz low shelf (UA's 610 manual), stepped to 9 dB (the 2-610's steps). Amp figures estimated.  */
+      and a 100 Hz low shelf (UA's 610 manual), stepped to 9 dB (the 2-610's steps). The line amps' +30 dBm is
+      McManus's; the rest of the amp figures are estimated (AmpModel.h).  */
 inline const DeskInfo& deskInfo (Desk d)
 {
     static const DeskInfo desks[numDesks] = {
@@ -176,10 +177,11 @@ inline const DeskInfo& deskInfo (Desk d)
           "A valve radio broadcast console that Sam Phillips bought used for Sun Studio, replacing a five-input Presto. "
           "Mono, transformer-coupled, a handful of mic inputs on big rotary pots and no EQ. With it and two Ampex 350s - "
           "the second for the slapback echo - he recorded Elvis, Johnny Cash, Carl Perkins and Jerry Lee Lewis.",
-          "Mono and valve: thick, warm and compressed when pushed, with a narrow, radio-ish bandwidth and the iron of "
-          "its transformers in the low end. Everything comes out the middle.",
+          "Mono and valve: clean at its normal +18 dBm, thickening with second harmonic as you push it towards its "
+          "+26 dBm ceiling, a broadcast bandwidth of about 30 Hz to 15 kHz and the iron of its transformers in the low "
+          "end. Everything comes out the middle.",
           true, false, EqStyle::none, false, false, false, false,
-          0.62f, 0.50f, 0.92f, 0.25f, 40.0f, 10000.0f, false, "ECHO", true, false },
+          0.62f, 0.50f, 0.92f, 0.25f, 30.0f, 15000.0f, false, "ECHO", true, false },
 
         { "EMI REDD.17", "REDD.17",
           "EMI (Record Engineering Development Dept.)  -  England  -  Abbey Road, 1958",
