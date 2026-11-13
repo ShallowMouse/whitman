@@ -19,6 +19,15 @@ public:
         setSize (760, 40 + numDesks * 236);
     }
 
+    /** A little of a desk's face (the cards' picture; MELVILLE's new-session wizard uses it too). */
+    static void preview (juce::Graphics& g, juce::Rectangle<float> r, Desk d) { Card::drawPreview (g, r, DeskSkin::of (d)); }
+    /** The desks, oldest first (the clean desk last). */
+    static std::vector<Desk> order()
+    {
+        return { Desk::rca76d, Desk::redd17, Desk::ua610, Desk::redd37, Desk::redd51, Desk::tg12345, Desk::tridentA,
+                 Desk::tg12345mk4, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::whitman };
+    }
+
     void paint (juce::Graphics& g) override
     {
         g.fillAll (Pequod::Colours::bg);
@@ -31,7 +40,7 @@ public:
     {
         int y = 40;
         // oldest first, the clean desk last
-        for (auto d : { Desk::rca76d, Desk::redd17, Desk::ua610, Desk::redd37, Desk::redd51, Desk::tg12345, Desk::tridentA, Desk::tg12345mk4, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::whitman })
+        for (auto d : order())
             for (auto* c : cards)
                 if (c->desk == d) { c->setBounds (10, y, getWidth() - 20, 224); y += 236; }
     }

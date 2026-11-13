@@ -85,6 +85,8 @@ MainComponent::~MainComponent()
 {
    #if defined (MELVILLE_HOSTED) && MELVILLE_HOSTED
     melville::detach (deviceManager);     // (and out of MELVILLE's session)
+    melville::currentDesk = nullptr;
+    melville::deskCards().clear();
    #endif
     stopTimer();
     saveSettings();
@@ -105,7 +107,26 @@ void MainComponent::openAudio()
    #if defined (MELVILLE_HOSTED) && MELVILLE_HOSTED
     melville::addToSession (deviceManager, {
         [this] { return MixState::toXml (engine, names); },
-        [this] (const juce::XmlElement& x) { if (MixState::fromXml (x, engine, names)) { applyDesk(); refreshAll(); saveSettings(); } } });
+        [this] (const juce::XmlElement& x) { if (MixState::fromXml (x, engine, names)) { applyDesk(); refreshAll(); saveSettings(); } },
+        [this] (const melville::NewStudio& made)
+        {
+            // a new reel: every strip and the master back to flat, on the desk the wizard chose
+            juce::XmlElement blank ("WHITMAN_MIX");
+            blank.setAttribute ("desk", made.desk >= 0 ? made.desk : engine.desk.load());
+            if (MixState::fromXml (blank, engine, names)) { applyDesk(); refreshAll(); saveSettings(); }
+        } });
+    {
+        // the desks, for MELVILLE's new-session wizard
+        auto& cards = melville::deskCards();
+        cards.clear();
+        for (auto d : DeskPicker::order())
+        {
+            const auto& info = deskInfo (d);
+            cards.push_back ({ (int) d, info.name, info.maker, info.history, info.sound,
+                               [d] (juce::Graphics& g, juce::Rectangle<float> r) { DeskPicker::preview (g, r, d); } });
+        }
+        melville::currentDesk = [this] { return engine.desk.load(); };
+    }
    #endif
     if (! hosted)
         deviceManager.initialise (maxStrips + 3, maxStrips + 2, saved.get(), true);
