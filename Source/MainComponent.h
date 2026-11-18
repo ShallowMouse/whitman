@@ -8,6 +8,7 @@
 #include "Console.h"
 #include "RouteStatus.h"
 #include "Updater.h"
+#include "NearestTooltips.h"
 
 namespace whitman
 {
@@ -57,7 +58,7 @@ private:
     juce::Component stripHolder;
     juce::OwnedArray<ChannelStrip> strips;
     MasterStrip master { engine };
-    juce::TooltipWindow tooltips { this, 600 };
+    NearestTooltips tooltips { this, 600 };
 
     std::unique_ptr<juce::FileChooser> chooser;
     juce::File currentFile;
