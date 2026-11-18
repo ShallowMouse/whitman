@@ -511,6 +511,45 @@ void MainComponent::paint (juce::Graphics& g)
     g.setColour (DeskSkin::of (engine.getDesk()).frame);
     g.fillRect (getLocalBounds().withTrimmedTop (partui::headerHeight + 2));
 
+    // wooden end cheeks: the grain running along them, a rounded edge catching the light
+    for (auto c : { cheekL, cheekR })
+    {
+        if (c.isEmpty()) continue;
+        auto w = c.toFloat().withBottom ((float) (armrestArea.isEmpty() ? c.getBottom() : armrestArea.getBottom()));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff6b3f22), w.getX(), w.getY(), juce::Colour (0xff3d2213), w.getRight(), w.getY(), false));
+        g.fillRoundedRectangle (w, 4.0f);
+        juce::Random rnd ((juce::int64) c.getX());
+        for (int i = 0; i < 14; ++i)
+        {
+            const float x = w.getX() + 2.0f + rnd.nextFloat() * (w.getWidth() - 4.0f);
+            g.setColour (juce::Colour (0xff2a160c).withAlpha (0.25f + rnd.nextFloat() * 0.25f));
+            juce::Path grain;
+            grain.startNewSubPath (x, w.getY());
+            for (float y = w.getY(); y < w.getBottom(); y += 40.0f)
+                grain.lineTo (x + std::sin (y * 0.013f + (float) i) * 2.0f, y + 40.0f);
+            g.strokePath (grain, juce::PathStrokeType (0.8f));
+        }
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.drawVerticalLine ((int) w.getX() + 2, w.getY() + 3.0f, w.getBottom() - 3.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.drawRoundedRectangle (w, 4.0f, 1.0f);
+    }
+    // the armrest: padded black vinyl, stitched along its top
+    if (! armrestArea.isEmpty())
+    {
+        auto a = armrestArea.toFloat().withTrimmedTop (4.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.fillRoundedRectangle (a.translated (0.0f, 2.0f), 10.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3a3634), a.getX(), a.getY(), juce::Colour (0xff0e0d0d), a.getX(), a.getBottom(), false));
+        g.fillRoundedRectangle (a, 10.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.14f), a.getX(), a.getY(), juce::Colours::transparentWhite, a.getX(), a.getY() + a.getHeight() * 0.5f, false));
+        g.fillRoundedRectangle (a.reduced (2.0f, 1.0f), 9.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.6f));
+        const float sy = a.getY() + 6.0f;
+        for (float x = a.getX() + 12.0f; x < a.getRight() - 12.0f; x += 9.0f)
+            g.drawLine (x, sy, x + 5.0f, sy, 1.0f);
+    }
+
     // top bar
     auto bar = getLocalBounds().removeFromTop (partui::headerHeight);
     partui::drawBar (g, bar, partColour());
@@ -557,7 +596,13 @@ void MainComponent::resized()
     statusArea = bar.withTrimmedRight (10).withSizeKeepingCentre (bar.getWidth() - 10, 40);
 
     r.reduce (8, 8);
-    master.setBounds (r.removeFromRight (DeskSkin::of (engine.getDesk()).masterWidth));
+    const auto& skin = DeskSkin::of (engine.getDesk());
+    // the desk's furniture: wooden end cheeks, a padded armrest along the front
+    cheekL = cheekR = armrestArea = {};
+    if (skin.armrest)    armrestArea = r.removeFromBottom (34);
+    if (skin.woodCheeks) { cheekL = r.removeFromLeft (22); cheekR = r.removeFromRight (22); }
+    if (! armrestArea.isEmpty() && ! cheekL.isEmpty()) armrestArea = armrestArea.withLeft (cheekL.getX()).withRight (cheekR.getRight());
+    master.setBounds (r.removeFromRight (skin.masterWidth));
     r.removeFromRight (8);
     viewport.setBounds (r);
     rebuildStrips();

@@ -23,6 +23,22 @@ struct DeskSkin
     const char* plateLine = "";   // under the desk's name on the master plate
     int meterStyle = 0;           // each channel's meter: 0 a needle VU, 1 a plasma bargraph (SSL), 2 an LED bargraph (Neotek)
 
+    // how the desk was built - so it looks like the hardware
+    bool oneShell = false;        // one steel desk, its controls in rows (the REDDs, the RCA): no module seams between channels
+    bool channelMeters = true;    // a meter on every channel (the REDDs, the RCA and the 610 had none: the mix's VUs only)
+    bool meterBridge = false;     // the channels' meters in a hood across the top (the 1970s desks)
+    bool backlitMeters = false;   // VUs lit from behind (the 1970s on)
+    bool rotaryFaders = false;    // level on big rotary attenuators, not faders (the RCA broadcast board, the UA 610)
+    bool woodCheeks = false;      // wooden end cheeks either side of the desk
+    bool armrest = false;         // a padded armrest along the front
+    int modulePairs = 1;          // channels per module (the TG's microphone cassettes held two)
+    juce::Colour hood;            // the meter bridge's housing (transparent: the frame's)
+    juce::Colour faderCap { 0xff8b9095 };   // a straight fader's cap
+    juce::Colour mainFaderCap;    // the master's (transparent: as the channels')
+    juce::Colour muteLamp { 0xffff5a3a }, soloLamp { 0xff7ee06a };
+    /** Knob caps by section (knob style 1 and 3: aluminium anodised / chicken-head colours): input, EQ, dynamics, sends, pan. */
+    juce::Colour knobGain, knobEq, knobDyn, knobSend, knobPan;
+
     static const DeskSkin& of (Desk d);
 };
 
@@ -59,6 +75,7 @@ public:
     explicit VUMeter (juce::String label) : caption (std::move (label)) {}
     void push (float peak);          // ~30 times a second
     void paint (juce::Graphics&) override;
+    bool backlit = false;            // lit from behind (the 1970s desks), else a plain cream face
 
     static void setPpm (bool on) noexcept { ppm = on; }
     static bool isPpm() noexcept          { return ppm; }
@@ -66,6 +83,7 @@ public:
 private:
     juce::String caption;
     float needle = -20.0f;           // VU
+    void paintGlass (juce::Graphics&, juce::Rectangle<float> face);
     float ppmDb = -40.0f;            // PPM, dB relative to the reference
     inline static bool ppm = false;
     void paintPpm (juce::Graphics&);
@@ -83,10 +101,27 @@ public:
     double getValueFromText (const juce::String& t) override;
     void paint (juce::Graphics&) override;
 
+    bool isMain = false;             // the master's
+
 private:
     const DeskSkin* skin = nullptr;
     void paintStraight (juce::Graphics&);
     void paintQuadrant (juce::Graphics&);
+    void paintRotary (juce::Graphics&);
+};
+
+//==============================================================================
+/** A push-button with a lamp in its cap, lit when it's on (mute, solo, the switches). */
+class LampButton : public juce::TextButton
+{
+public:
+    using juce::TextButton::TextButton;
+    void setSkin (const DeskSkin* s) { skin = s; repaint(); }
+    juce::Colour lamp { 0xffff5a3a };
+    void paintButton (juce::Graphics&, bool over, bool down) override;
+
+private:
+    const DeskSkin* skin = nullptr;
 };
 
 //==============================================================================
@@ -142,7 +177,7 @@ private:
     std::unique_ptr<SslDynamicsPanel> dynPanel;          // SSL
     juce::TextButton trebleMode { "POP" }, compMode { "OFF" };
     float shownGr = 0.0f;
-    juce::TextButton mute { "M" }, solo { "S" };
+    LampButton mute { "M" }, solo { "S" };
     Fader fader;
     Meter meter { 1 };
     juce::Label dbLabel;
@@ -154,6 +189,7 @@ private:
     void showName();
     void showCompMode();
     void drawKnobCaption (juce::Graphics&, const DeskKnob&, const juce::String& title, const juce::String& value);
+    int hoodBottom = 0;               // where the meter bridge ends (0: none)
 };
 
 //==============================================================================
@@ -191,6 +227,7 @@ private:
     void paintPlateCue (juce::Graphics&, juce::Rectangle<float> plate);
     float shownCorr = 1.0f;
     void paintCorrelator (juce::Graphics&);
+    juce::Rectangle<int> hoodArea;                // the meters' housing
 };
 
 } // namespace whitman
