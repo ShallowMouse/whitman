@@ -55,6 +55,7 @@ std::unique_ptr<juce::XmlElement> MixState::toXml (const MixEngine& e, const juc
         c->setAttribute ("gain", (double) s.gainDb.load());
         c->setAttribute ("pan", (double) s.pan.load());
         c->setAttribute ("mute", s.mute.load());
+        c->setAttribute ("insert", s.insertIn.load());
         c->setAttribute ("solo", s.solo.load());
         c->setAttribute ("input", (double) s.inputDb.load());
         c->setAttribute ("bass", (double) s.bassDb.load());
@@ -154,6 +155,7 @@ bool MixState::fromXml (const juce::XmlElement& x, MixEngine& e, juce::StringArr
         s.gainDb = (float) juce::jlimit ((double) faderMinDb, (double) faderMaxDb, c->getDoubleAttribute ("gain", 0.0));
         s.pan    = (float) juce::jlimit (-1.0, 1.0, c->getDoubleAttribute ("pan", 0.0));
         s.mute   = c->getBoolAttribute ("mute", false);
+        s.insertIn = c->getBoolAttribute ("insert", false);
         s.solo   = c->getBoolAttribute ("solo", false);
         s.inputDb  = (float) juce::jlimit (-10.0, 20.0, c->getDoubleAttribute ("input", 0.0));
         s.bassDb   = (float) juce::jlimit (-10.0, 10.0, c->getDoubleAttribute ("bass", 0.0));

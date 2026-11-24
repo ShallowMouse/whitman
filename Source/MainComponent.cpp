@@ -276,13 +276,6 @@ void MainComponent::timerCallback()
         for (int t = 0; t < strips.size(); ++t)
             strips[t]->setTrackColour (tk.colour ? tk.colour (t) : juce::Colours::transparentBlack);
     }
-    // the insert points: a channel goes out and back only while something's cabled into its return
-    if (++insertPoll % 8 == 0)
-    {
-        const auto cabled = melville::audioCabledInto ("whitman");
-        for (int t = 0; t < maxStrips; ++t)
-            engine.strip (t).insertIn.store (cabled.contains ("Insert return track " + juce::String (t + 1)), std::memory_order_relaxed);
-    }
    #endif
     if (routingChanged.exchange (false))
         rebuildStrips();

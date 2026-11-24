@@ -96,7 +96,6 @@ private:
 
     juce::PropertiesFile& settings();
     int tracksRev = -1;
-    int insertPoll = 0;
     juce::Rectangle<int> cheekL, cheekR, armrestArea;   // the desk's wooden cheeks and armrest
 };
 

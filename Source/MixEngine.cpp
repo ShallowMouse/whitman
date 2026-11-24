@@ -70,7 +70,7 @@ Routing Routing::make (const juce::StringArray& inputNames, const juce::BigInteg
 //==============================================================================
 void MixEngine::Strip::resetState() noexcept
 {
-    curL = curR = curEcho = curFader = 0.0f;
+    curL = curR = curEcho = 0.0f;
     curIn = juce::Decibels::decibelsToGain (inputDb.load());
     bass.reset();
     treble.reset();
@@ -94,6 +94,8 @@ void MixEngine::prepare (double sr, int maxBlockSize)
     const int n = juce::jmax (1, maxBlockSize);
     mix.setSize (2, n, false, false, true);
     scratch.setSize (4, n, false, false, true);    // 0: strip, 1: echo bus, 2-3: chamber L/R
+    lineUpBuf.setSize (1, n, false, false, true);
+    for (auto& st : strips) { st.lineUp.assign ((size_t) (2 * n + 1), 0.0f); st.lineUpPos = 0; }
 
     chamber.setSampleRate (sampleRate);
     juce::Reverb::Parameters p;
@@ -307,6 +309,10 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
     bool echoUsed = false;
 
     const bool soloing = anySolo();
+    bool inserting = false;
+    for (int t = 0; t < maxStrips && ! inserting; ++t)
+        inserting = routing.insertReturn[(size_t) t] >= 0 && strips[(size_t) t].insertIn.load (std::memory_order_relaxed);
+    float* lined = lineUpBuf.getWritePointer (0);
     const float inv = 1.0f / (float) n;
 
     for (int i = 0; i < numIn && i < (int) routing.stripOfInput.size(); ++i)
@@ -379,30 +385,38 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
             x = tmp;
         }
 
+        // --- the insert point (MELVILLE's patchbay), as on a console: after the channel's EQ and
+        //     dynamics, before its fader. The send is always live; the channel's INS button switches
+        //     the return in, and the channel carries on from what comes back. What comes back is one
+        //     block behind (it's been round the patchbay), so while any insert is in use the
+        //     channels without one are held back one block too, and the whole desk stays in time.
+        {
+            const int sendCh = routing.insertSend[(size_t) si], retCh = routing.insertReturn[(size_t) si];
+            if (juce::isPositiveAndBelow (sendCh, numOut) && out[sendCh] != nullptr)
+                juce::FloatVectorOperations::copy (out[sendCh], x, n);
+            const bool returned = juce::isPositiveAndBelow (retCh, numIn) && in[retCh] != nullptr && s.insertIn.load (std::memory_order_relaxed);
+            if (returned)
+                x = in[retCh];
+            else if (inserting && (int) s.lineUp.size() >= 2 * n)
+            {
+                // the same block's delay, so this channel lines up with the inserted ones
+                const int len = (int) s.lineUp.size();
+                for (int k = 0; k < n; ++k)
+                {
+                    s.lineUp[(size_t) s.lineUpPos] = x[k];
+                    int r = s.lineUpPos - n;
+                    if (r < 0) r += len;
+                    lined[k] = s.lineUp[(size_t) r];
+                    if (++s.lineUpPos >= len) s.lineUpPos = 0;
+                }
+                x = lined;
+            }
+        }
+
         // --- fader, pan, echo send
         float gl = s.curL, gr = s.curR, ge = s.curEcho;
         const float dl = (tl - gl) * inv, dr = (tr - gr) * inv, de = (te - ge) * inv;
-        // the insert point (MELVILLE): after the fader, out to the patchbay and back before the pan
-        const int sendCh = routing.insertSend[(size_t) si], retCh = routing.insertReturn[(size_t) si];
-        float* send = juce::isPositiveAndBelow (sendCh, numOut) ? out[sendCh] : nullptr;
-        const float* ret = juce::isPositiveAndBelow (retCh, numIn) && s.insertIn.load (std::memory_order_relaxed) ? in[retCh] : nullptr;
-        if (send != nullptr || ret != nullptr)
-        {
-            float gf = s.curFader;
-            const float df = (g - gf) * inv;
-            for (int k = 0; k < n; ++k)
-            {
-                gf += df;
-                const float v = x[k] * gf;
-                if (send != nullptr) send[k] = v;
-                if (ret == nullptr) { mixL[k] += v * pl; mixR[k] += v * pr; }
-            }
-            if (ret != nullptr)
-                for (int k = 0; k < n; ++k) { mixL[k] += ret[k] * pl; mixR[k] += ret[k] * pr; }
-            s.curFader = g;
-            gl = tl; gr = tr;
-        }
-        else if (! (gl == 0.0f && gr == 0.0f && tl == 0.0f && tr == 0.0f))
+        if (! (gl == 0.0f && gr == 0.0f && tl == 0.0f && tr == 0.0f))
         {
             for (int k = 0; k < n; ++k)
             {
@@ -412,7 +426,6 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
                 mixR[k] += v * gr;
             }
         }
-        if (send == nullptr && ret == nullptr) s.curFader = g;
         if (! (ge == 0.0f && te == 0.0f))
         {
             for (int k = 0; k < n; ++k) { ge += de; echo[k] += x[k] * ge; }

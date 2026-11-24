@@ -180,7 +180,7 @@ private:
     std::unique_ptr<SslDynamicsPanel> dynPanel;          // SSL
     juce::TextButton trebleMode { "POP" }, compMode { "OFF" };
     float shownGr = 0.0f;
-    LampButton mute { "M" }, solo { "S" };
+    LampButton mute { "M" }, solo { "S" }, ins { "INS" };
     Fader fader;
     Meter meter { 1 };
     juce::Label dbLabel;

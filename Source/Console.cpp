@@ -1,5 +1,6 @@
 #include "Console.h"
 #include "DeskPanels.h"
+#include "Melville.h"
 
 namespace whitman
 {
@@ -983,7 +984,15 @@ ChannelStrip::ChannelStrip (MixEngine& e, int i, juce::StringArray& n) : engine 
     solo.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe0c060));
     solo.setTooltip ("Solo (more than one can be soloed)");
     solo.onClick = [this] { engine.strip (index).solo = solo.getToggleState(); changed(); };
+    ins.setClickingTogglesState (true);
+    ins.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe08a3a));
+    ins.setTooltip ("Insert: switches the channel's insert return in, after its EQ and dynamics, before the fader "
+                    "(INSERT SEND and RETURN are on MELVILLE's PATCHBAY). The send is always live.");
+    ins.onClick = [this] { engine.strip (index).insertIn = ins.getToggleState(); changed(); };
     for (auto* b : { &mute, &solo }) { b->setWantsKeyboardFocus (false); addAndMakeVisible (b); }
+    ins.setWantsKeyboardFocus (false);
+    addChildComponent (ins);
+    ins.setVisible (melville::isHosted());        // (the insert jacks are MELVILLE's)
 
     fader.setTooltip ("Level (double-click for 0 dB)");
     fader.onValueChange = [this]
@@ -1031,8 +1040,10 @@ void ChannelStrip::setDesk (Desk d)
     chanVu.backlit = skin->backlitMeters;
     mute.lamp = skin->muteLamp;
     solo.lamp = skin->soloLamp;
+    ins.lamp = juce::Colour (0xffffa040);
     mute.setSkin (skin);
     solo.setSkin (skin);
+    ins.setSkin (skin);
     // the readout window is WHITMAN's own; the old desks show the level on the fader's scale (and while it's dragged)
     dbLabel.setVisible (! skin->bakeliteKnobs);
     fader.setPopupDisplayEnabled (skin->bakeliteKnobs, true, this);
@@ -1124,6 +1135,7 @@ void ChannelStrip::refreshFromEngine()
     if (dynPanel != nullptr) dynPanel->refresh();
     mute.setToggleState (s.mute.load(), juce::dontSendNotification);
     solo.setToggleState (s.solo.load(), juce::dontSendNotification);
+    ins.setToggleState (s.insertIn.load(), juce::dontSendNotification);
     fader.setValue (s.gainDb.load(), juce::dontSendNotification);
     dbLabel.setText (fader.getTextFromValue (fader.getValue()), juce::dontSendNotification);
     repaint();
@@ -1383,9 +1395,21 @@ void ChannelStrip::resized()
         }
 
         auto ms = r.removeFromTop (22);
-        mute.setBounds (ms.removeFromLeft (ms.getWidth() / 2 - 1));
-        ms.removeFromLeft (2);
-        solo.setBounds (ms);
+        if (ins.isVisible())
+        {
+            const int w3 = (ms.getWidth() - 4) / 3;
+            mute.setBounds (ms.removeFromLeft (w3));
+            ms.removeFromLeft (2);
+            solo.setBounds (ms.removeFromLeft (w3));
+            ms.removeFromLeft (2);
+            ins.setBounds (ms);
+        }
+        else
+        {
+            mute.setBounds (ms.removeFromLeft (ms.getWidth() / 2 - 1));
+            ms.removeFromLeft (2);
+            solo.setBounds (ms);
+        }
         return ms.getBottom();
     };
 
