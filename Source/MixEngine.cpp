@@ -35,6 +35,11 @@ Routing Routing::make (const juce::StringArray& inputNames, const juce::BigInteg
         {
             strip = activeIndex;
         }
+        if (const auto nm = inputNames[ch].trim(); nm.startsWithIgnoreCase ("Insert return track "))
+        {
+            strip = -1;
+            if (const int t = nm.getTrailingIntValue(); t >= 1 && t <= maxStrips) r.insertReturn[(size_t) t - 1] = activeIndex;
+        }
         r.stripOfInput.push_back (strip);
         if (strip >= 0) r.numStrips = juce::jmax (r.numStrips, strip + 1);
         ++activeIndex;
@@ -48,6 +53,8 @@ Routing Routing::make (const juce::StringArray& inputNames, const juce::BigInteg
         const auto n = outputNames[ch].trim();
         if (n.equalsIgnoreCase ("To Hawthorne master L")) r.outLeft = activeIndex;
         if (n.equalsIgnoreCase ("To Hawthorne master R")) r.outRight = activeIndex;
+        if (n.startsWithIgnoreCase ("Insert send track "))
+            if (const int t = n.getTrailingIntValue(); t >= 1 && t <= maxStrips) r.insertSend[(size_t) t - 1] = activeIndex;
         if (found < 2) firstTwo[found++] = activeIndex;
         ++activeIndex;
     }
@@ -63,7 +70,7 @@ Routing Routing::make (const juce::StringArray& inputNames, const juce::BigInteg
 //==============================================================================
 void MixEngine::Strip::resetState() noexcept
 {
-    curL = curR = curEcho = 0.0f;
+    curL = curR = curEcho = curFader = 0.0f;
     curIn = juce::Decibels::decibelsToGain (inputDb.load());
     bass.reset();
     treble.reset();
@@ -375,7 +382,27 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
         // --- fader, pan, echo send
         float gl = s.curL, gr = s.curR, ge = s.curEcho;
         const float dl = (tl - gl) * inv, dr = (tr - gr) * inv, de = (te - ge) * inv;
-        if (! (gl == 0.0f && gr == 0.0f && tl == 0.0f && tr == 0.0f))
+        // the insert point (MELVILLE): after the fader, out to the patchbay and back before the pan
+        const int sendCh = routing.insertSend[(size_t) si], retCh = routing.insertReturn[(size_t) si];
+        float* send = juce::isPositiveAndBelow (sendCh, numOut) ? out[sendCh] : nullptr;
+        const float* ret = juce::isPositiveAndBelow (retCh, numIn) && s.insertIn.load (std::memory_order_relaxed) ? in[retCh] : nullptr;
+        if (send != nullptr || ret != nullptr)
+        {
+            float gf = s.curFader;
+            const float df = (g - gf) * inv;
+            for (int k = 0; k < n; ++k)
+            {
+                gf += df;
+                const float v = x[k] * gf;
+                if (send != nullptr) send[k] = v;
+                if (ret == nullptr) { mixL[k] += v * pl; mixR[k] += v * pr; }
+            }
+            if (ret != nullptr)
+                for (int k = 0; k < n; ++k) { mixL[k] += ret[k] * pl; mixR[k] += ret[k] * pr; }
+            s.curFader = g;
+            gl = tl; gr = tr;
+        }
+        else if (! (gl == 0.0f && gr == 0.0f && tl == 0.0f && tr == 0.0f))
         {
             for (int k = 0; k < n; ++k)
             {
@@ -385,6 +412,7 @@ void MixEngine::process (const float* const* in, int numIn, float* const* out, i
                 mixR[k] += v * gr;
             }
         }
+        if (send == nullptr && ret == nullptr) s.curFader = g;
         if (! (ge == 0.0f && te == 0.0f))
         {
             for (int k = 0; k < n; ++k) { ge += de; echo[k] += x[k] * ge; }

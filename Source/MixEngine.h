@@ -47,6 +47,9 @@ struct Routing
     int outLeft = -1, outRight = -1; // ACTIVE output channel indices for the mix, or -1
     int numStrips = 0;               // strips the console shows
     bool isHawthorneRoute = false;
+    // MELVILLE's insert points: each strip's post-fader send and its return (ACTIVE channel indices, or -1)
+    std::array<int, 96> insertSend, insertReturn;
+    Routing() { insertSend.fill (-1); insertReturn.fill (-1); }
 
     static Routing make (const juce::StringArray& inputNames, const juce::BigInteger& activeInputs,
                          const juce::StringArray& outputNames, const juce::BigInteger& activeOutputs);
@@ -78,6 +81,7 @@ public:
         std::atomic<float> trebleDb { 0.0f };       // Pop: 5 kHz bell up / 10 kHz shelf down; Classic: 10 kHz shelf
         std::atomic<bool>  classic  { false };      // treble module
         std::atomic<float> echoDb   { echoMinDb };  // post-fader echo send
+        std::atomic<bool>  insertIn { false };      // something's cabled into the strip's insert return (MELVILLE)
         // TG12345
         std::atomic<float> presenceDb { 0.0f };     // presence band, at presenceHz (presenceFreq)
         std::atomic<int>   presenceFreq { 4 };      // 0..7 (2.8 kHz)
@@ -102,7 +106,7 @@ public:
         std::atomic<float> peak     { 0.0f };       // post-fader, since the UI last took it
 
         // audio thread
-        float curL = 0.0f, curR = 0.0f, curIn = 1.0f, curEcho = 0.0f;
+        float curL = 0.0f, curR = 0.0f, curIn = 1.0f, curEcho = 0.0f, curFader = 0.0f;
         juce::IIRFilter bass, treble, presence;
         float setBass = 1000.0f, setTreble = 1000.0f, setPresence = 1000.0f; bool setClassic = false; int setPresFreq = -1, eqDesk = -1;
         float env = 0.0f;                           // compressor detector (gain-reduction dB)
