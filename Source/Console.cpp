@@ -57,6 +57,30 @@ const DeskSkin& DeskSkin::of (Desk d)
         { C (0xff1c2024), C (0xff5f6f7c), C (0xff4e5c68), C (0xff323c45),
           C (0xfff1ede2), C (0xffcfd2cf), C (0xffe9c46a), C (0xff151a1e),
           true, false, true, channelWidth, 236, 0, "UNITED RECORDING  -  HOLLYWOOD" },
+        // Helios: dark grey modules, white legends, black knobs with coloured skirts
+        { C (0xff1a1b1c), C (0xff4d5155), C (0xff3d4144), C (0xff2a2d30),
+          C (0xfff0eee8), C (0xffc6c6c0), C (0xffe8b84a), C (0xff141516),
+          true, false, true, channelWidth, 250, 2, "BASING STREET  -  OLYMPIC  -  THE MOBILE" },
+        // API: API's blue-grey, white legends, black knobs with coloured caps
+        { C (0xff1a1e24), C (0xff6c7f96), C (0xff5a6b80), C (0xff36424f),
+          C (0xfff5f6f4), C (0xffd3d9de), C (0xffe8c050), C (0xff141920),
+          true, false, true, channelWidth, 250, 2, "NEW YORK" },
+        // MCI JH-500: warm grey-beige, dark legends, coloured caps
+        { C (0xff221f1b), C (0xffb5aa96), C (0xffa09683), C (0xff5e574b),
+          C (0xff1b1915), C (0xff4a443b), C (0xff2f6fae), C (0xff1b1915),
+          true, false, true, channelWidth, 250, 2, "FORT LAUDERDALE  -  FLORIDA", 1 },
+        // Harrison 32: near-black modules, light legends, coloured knobs
+        { C (0xff121314), C (0xff2e3134), C (0xff24272a), C (0xff1a1c1e),
+          C (0xffe9eaea), C (0xffb5b8ba), C (0xffe2a944), C (0xff0f1011),
+          true, false, true, channelWidth, 250, 2, "NASHVILLE", 1 },
+        // Focusrite Forte: deep blue, white legends, Focusrite red accents
+        { C (0xff10141c), C (0xff2c3b57), C (0xff223049), C (0xff18212f),
+          C (0xfff2f3f5), C (0xffbcc5d3), C (0xffd2412f), C (0xff0d1118),
+          true, false, true, channelWidth, 250, 2, "ENGLAND", 2 },
+        // Amek 9098: graphite blue-grey, white legends
+        { C (0xff16191c), C (0xff464f58), C (0xff3a424a), C (0xff252b31),
+          C (0xfff1f2f3), C (0xffc4cad0), C (0xff6fb2d6), C (0xff121417),
+          true, false, true, channelWidth, 250, 2, "ENGLAND", 2 },
     }};
 
     // How each was built (sources in Desk.h; the look from the makers' descriptions and the reviews of

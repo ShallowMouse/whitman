@@ -66,23 +66,30 @@ struct BandEqDef
 const BandEqDef* bandEqOf (Desk d);
 
 /** Each band-EQ desk keeps its own settings, so switching desks doesn't lose them. */
-constexpr int numBandEqDesks = 6;
+constexpr int numBandEqDesks = 12;
 inline int bandEqSlot (Desk d)
 {
     switch (d)
     {
-        case Desk::tridentA: return 0;
-        case Desk::neve8028: return 1;
-        case Desk::ssl4000e: return 2;
-        case Desk::neotek:   return 3;
-        case Desk::redd17:   return 4;
-        case Desk::ua610:    return 5;
-        default:             return -1;
+        case Desk::tridentA:   return 0;
+        case Desk::neve8028:   return 1;
+        case Desk::ssl4000e:   return 2;
+        case Desk::neotek:     return 3;
+        case Desk::redd17:     return 4;
+        case Desk::ua610:      return 5;
+        case Desk::helios:     return 6;
+        case Desk::api:        return 7;
+        case Desk::mci500:     return 8;
+        case Desk::harrison32: return 9;
+        case Desk::focusrite:  return 10;
+        case Desk::amek9098:   return 11;
+        default:               return -1;
     }
 }
 inline Desk bandEqDesk (int slot)
 {
-    static const Desk d[numBandEqDesks] = { Desk::tridentA, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::redd17, Desk::ua610 };
+    static const Desk d[numBandEqDesks] = { Desk::tridentA, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::redd17, Desk::ua610,
+                                            Desk::helios, Desk::api, Desk::mci500, Desk::harrison32, Desk::focusrite, Desk::amek9098 };
     return d[juce::jlimit (0, numBandEqDesks - 1, slot)];
 }
 

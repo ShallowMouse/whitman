@@ -24,8 +24,9 @@ public:
     /** The desks, oldest first (the clean desk last). */
     static std::vector<Desk> order()
     {
-        return { Desk::rca76d, Desk::redd17, Desk::ua610, Desk::redd37, Desk::redd51, Desk::tg12345, Desk::tridentA,
-                 Desk::tg12345mk4, Desk::neve8028, Desk::ssl4000e, Desk::neotek, Desk::whitman };
+        return { Desk::rca76d, Desk::redd17, Desk::ua610, Desk::redd37, Desk::redd51, Desk::helios, Desk::tg12345, Desk::api,
+                 Desk::tridentA, Desk::tg12345mk4, Desk::neve8028, Desk::mci500, Desk::harrison32, Desk::ssl4000e,
+                 Desk::focusrite, Desk::amek9098, Desk::neotek, Desk::whitman };
     }
 
     void paint (juce::Graphics& g) override

@@ -97,8 +97,92 @@ const BandEqDef* bandEqOf (Desk d)
         return e;
     }();
 
+    static const BandEqDef helios = []
+    {
+        // the Type 69: a treble shelf, a switched mid bell, a switched bass shelf with its famous lift
+        BandEqDef e;
+        BandDef hi  { "TREBLE", Shape::highShelf, { 10000 } };                                 hi.maxDb = 10; hi.q = 0.6f;
+        BandDef mid { "MID",    Shape::bell, { 700, 1000, 1500, 2200, 3300, 4700, 6800 } };   mid.maxDb = 10; mid.q = 1.0f; mid.defaultStep = 3;
+        BandDef lo  { "BASS",   Shape::lowShelf, { 50, 60, 100, 200 } };                       lo.maxDb = 14; lo.q = 0.9f; lo.defaultStep = 1;
+        e.bands = { hi, mid, lo };
+        e.hpf = { FilterDef::Kind::switched, { 50, 100, 200 }, 0, 0, 2, "HPF" };
+        return e;
+    }();
+    static const BandEqDef api = []
+    {
+        // the 550A: proportional-Q bells, the outer bands shelf or peak (+/-12 dB)
+        BandEqDef e;
+        BandDef hi  { "HIGH", Shape::highShelf, { 5000, 7000, 10000, 12500, 15000 } };  hi.maxDb = 12; hi.q = 0.7f; hi.defaultStep = 2;
+        hi.alt = BandDef::Alt::shape; hi.altLabel = "PEAK"; hi.altShape = Shape::bell; hi.altQ = 1.0f;
+        BandDef mid { "MID",  Shape::bell, { 400, 800, 1500, 3000, 5000 } };              mid.maxDb = 12; mid.q = 1.0f; mid.defaultStep = 2;
+        BandDef lo  { "LOW",  Shape::lowShelf, { 50, 100, 200, 300, 400 } };              lo.maxDb = 12; lo.q = 0.7f; lo.defaultStep = 1;
+        lo.alt = BandDef::Alt::shape; lo.altLabel = "PEAK"; lo.altShape = Shape::bell; lo.altQ = 1.0f;
+        e.bands = { hi, mid, lo };
+        e.hpf = { FilterDef::Kind::switched, { 50 }, 0, 0, 2, "FILTER" };
+        e.lpf = { FilterDef::Kind::switched, { 15000 }, 0, 0, 2, "FILTER" };
+        return e;
+    }();
+    static const BandEqDef mci = []
+    {
+        // JH-500 series: a high and a low band switched, a swept mid
+        BandEqDef e;
+        BandDef hi  { "HIGH", Shape::highShelf, { 3000, 5000, 7000, 10000, 15000 } };  hi.maxDb = 12; hi.q = 0.7f; hi.defaultStep = 3;
+        BandDef mid { "MID",  Shape::bell, {}, 400, 6000 };                              mid.maxDb = 12; mid.q = 1.0f;
+        BandDef lo  { "LOW",  Shape::lowShelf, { 40, 80, 160, 320 } };                   lo.maxDb = 12; lo.q = 0.7f; lo.defaultStep = 1;
+        e.bands = { hi, mid, lo };
+        e.hpf = { FilterDef::Kind::switched, { 40, 80, 160 }, 0, 0, 2, "HPF" };
+        e.lpf = { FilterDef::Kind::switched, { 15000, 10000, 7000 }, 0, 0, 2, "LPF" };
+        return e;
+    }();
+    static const BandEqDef harrison = []
+    {
+        // the 32 series: four fully parametric bands (sweep and Q), the outer ones shelving if wanted
+        BandEqDef e;
+        BandDef hi  { "HIGH",   Shape::bell, {}, 1500, 20000 };  hi.maxDb = 15; hi.qKnob = true; hi.qLo = 0.4f; hi.qHi = 3.0f; hi.maxDbAtLowQ = 15;
+        hi.alt = BandDef::Alt::shape; hi.altLabel = "SHELF"; hi.altShape = Shape::highShelf; hi.altQ = 0.6f;
+        BandDef hm  { "HI MID", Shape::bell, {}, 400, 8000 };    hm.maxDb = 15; hm.qKnob = true; hm.qLo = 0.4f; hm.qHi = 3.0f; hm.maxDbAtLowQ = 15;
+        BandDef lm  { "LO MID", Shape::bell, {}, 80, 2000 };     lm.maxDb = 15; lm.qKnob = true; lm.qLo = 0.4f; lm.qHi = 3.0f; lm.maxDbAtLowQ = 15;
+        BandDef lo  { "LOW",    Shape::bell, {}, 20, 400 };      lo.maxDb = 15; lo.qKnob = true; lo.qLo = 0.4f; lo.qHi = 3.0f; lo.maxDbAtLowQ = 15;
+        lo.alt = BandDef::Alt::shape; lo.altLabel = "SHELF"; lo.altShape = Shape::lowShelf; lo.altQ = 0.6f;
+        e.bands = { hi, hm, lm, lo };
+        e.hpf = { FilterDef::Kind::swept, {}, 20, 300, 2, "HPF" };
+        e.lpf = { FilterDef::Kind::swept, {}, 3000, 20000, 2, "LPF" };
+        return e;
+    }();
+    static const BandEqDef focusrite = []
+    {
+        // the ISA 110: HF shelf, two swept mids with Q, LF shelf, swept filters
+        BandEqDef e;
+        BandDef hi  { "HF",  Shape::highShelf, { 8000, 12000, 16000 } };   hi.maxDb = 15; hi.q = 0.6f; hi.defaultStep = 1;
+        BandDef hm  { "HMF", Shape::bell, {}, 600, 6000 };                 hm.maxDb = 15; hm.qKnob = true; hm.qLo = 0.5f; hm.qHi = 3.0f; hm.maxDbAtLowQ = 15;
+        BandDef lm  { "LMF", Shape::bell, {}, 40, 400 };                   lm.maxDb = 15; lm.qKnob = true; lm.qLo = 0.5f; lm.qHi = 3.0f; lm.maxDbAtLowQ = 15;
+        BandDef lo  { "LF",  Shape::lowShelf, { 40, 60, 100, 200 } };      lo.maxDb = 15; lo.q = 0.6f; lo.defaultStep = 1;
+        e.bands = { hi, hm, lm, lo };
+        e.hpf = { FilterDef::Kind::swept, {}, 16, 400, 3, "HPF" };
+        e.lpf = { FilterDef::Kind::swept, {}, 3000, 22000, 3, "LPF" };
+        return e;
+    }();
+    static const BandEqDef amek = []
+    {
+        // the 9098: four bands, the mids swept with a Q switch
+        BandEqDef e;
+        BandDef hi  { "HF",  Shape::highShelf, {}, 3000, 20000 };   hi.maxDb = 15; hi.q = 0.6f;
+        BandDef hm  { "HMF", Shape::bell, {}, 800, 9000 };          hm.maxDb = 15; hm.q = 0.8f; hm.alt = BandDef::Alt::q; hm.altLabel = "HI-Q"; hm.altQ = 2.0f;
+        BandDef lm  { "LMF", Shape::bell, {}, 100, 1200 };          lm.maxDb = 15; lm.q = 0.8f; lm.alt = BandDef::Alt::q; lm.altLabel = "HI-Q"; lm.altQ = 2.0f;
+        BandDef lo  { "LF",  Shape::lowShelf, {}, 25, 300 };        lo.maxDb = 15; lo.q = 0.6f;
+        e.bands = { hi, hm, lm, lo };
+        e.hpf = { FilterDef::Kind::swept, {}, 20, 250, 3, "HPF" };
+        return e;
+    }();
+
     switch (d)
     {
+        case Desk::helios:     return &helios;
+        case Desk::api:        return &api;
+        case Desk::mci500:     return &mci;
+        case Desk::harrison32: return &harrison;
+        case Desk::focusrite:  return &focusrite;
+        case Desk::amek9098:   return &amek;
         case Desk::redd17:    return &redd17;
         case Desk::ua610:     return &ua610;
         case Desk::tridentA:  return &trident;

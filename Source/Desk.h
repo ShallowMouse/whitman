@@ -8,8 +8,9 @@ namespace whitman
 /** The desks WHITMAN can be. Saved by number in mix files: only ever add to the end. */
 enum class Desk { whitman = 0, redd51 = 1, redd37 = 2, tg12345 = 3, tg12345mk4 = 4,    // tg12345 = the Mk I
                   tridentA = 5, neve8028 = 6, ssl4000e = 7, neotek = 8,
-                  rca76d = 9, redd17 = 10, ua610 = 11 };
-constexpr int numDesks = 12;
+                  rca76d = 9, redd17 = 10, ua610 = 11,
+                  helios = 12, api = 13, mci500 = 14, harrison32 = 15, focusrite = 16, amek9098 = 17 };
+constexpr int numDesks = 18;
 
 /** The channel EQ's layout.
     redd:  bass 100 Hz shelf; treble Pop (lift a bell at 5 kHz, cut a 10 kHz shelf) or Classic (10 kHz shelf)
@@ -71,7 +72,10 @@ struct DeskInfo
     - Universal Audio 610: Bill Putnam's modular valve channel amplifier, 1958, built into one-off consoles at
       United and Western in Hollywood (UA; Paul McManus's history). The 610-A module's EQ: a 10 kHz high shelf
       and a 100 Hz low shelf (UA's 610 manual), stepped to 9 dB (the 2-610's steps). The line amps' +30 dBm is
-      McManus's; the rest of the amp figures are estimated (AmpModel.h).  */
+      McManus's; the rest of the amp figures are estimated (AmpModel.h).
+    - Helios, API, MCI JH-500, Harrison 32, Focusrite Forte, Amek 9098: the EQ frequencies after the modules'
+      published specifications (BandEq.cpp has each); the amplifiers estimated from how each was built
+      (discrete or op-amp, transformers or not).  */
 inline const DeskInfo& deskInfo (Desk d)
 {
     static const DeskInfo desks[numDesks] = {
@@ -203,6 +207,62 @@ inline const DeskInfo& deskInfo (Desk d)
           "even-harmonic thickness when you push the GAIN. The sound of the great late-50s vocal records.",
           true, true, EqStyle::bands, false, false, false, false,
           0.84f, 0.30f, 0.96f, 0.12f, 10.0f, 0.0f },
+
+        { "Helios", "HELIOS",
+          "Helios Electronics (Dick Swettenham)  -  England  -  late 1960s and 1970s",
+          "Dick Swettenham's consoles, built one at a time for studios like Olympic, Island's Basing Street and the "
+          "Rolling Stones Mobile, and behind a long run of British rock records of the late 60s and 70s. Discrete "
+          "transistor amplifiers and transformers, and the Type 69 equaliser: a treble shelf, a switched mid and a "
+          "bass band famous for its low boost.",
+          "Thick and forward in the low mids, a hard-edged top, and transformers that round off the bass when pushed. "
+          "The bass band's lift is the one people buy the modules for.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.86f, 0.20f, 0.95f, 0.10f, 14.0f, 0.0f, false, "ECHO" },
+
+        { "API", "API",
+          "API (Automated Processes Inc.)  -  New York  -  1970s",
+          "Saul Walker's consoles, built from API's modules: the 2520 discrete op-amp, the 2503 output transformer and "
+          "the 550A equaliser with its proportional Q. The sound of a lot of American rock in the 70s.",
+          "Punchy, forward and solid in the low mids; the 550A's stepped bands get narrower the more you push them, so "
+          "small moves stay broad and big ones bite.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.93f, 0.10f, 0.97f, 0.06f, 10.0f, 0.0f, false, "ECHO" },
+
+        { "MCI JH-500", "JH-500",
+          "MCI (Jeep Harned)  -  Fort Lauderdale, Florida  -  from 1975",
+          "MCI's in-line console, one of the first with VCA automation, in a great many American studios of the late "
+          "70s and the disco and soft-rock years, Criteria in Miami among them. Transformerless op-amp design with a "
+          "three-band equaliser and filters.",
+          "Clean and bright with a bit of grit in the op-amps when pushed; a slightly hi-fi, glossy late-70s sound.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.95f, 0.04f, 0.98f, 0.02f, 8.0f, 0.0f, false, "ECHO" },
+
+        { "Harrison 32 Series", "32 SERIES",
+          "Harrison Systems (Dave Harrison)  -  Nashville  -  late 1970s",
+          "Dave Harrison's 32-series consoles, the first in-line designs. A Harrison at Westlake in Los Angeles made "
+          "Michael Jackson's Off the Wall and Thriller with Bruce Swedien. Fully parametric four-band equaliser.",
+          "Smooth and wide, with a sweet, open top and a solid low end: transformerless and very clean, so the EQ does "
+          "the shaping without much colour of its own.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.97f, 0.03f, 0.99f, 0.01f, 6.0f, 0.0f, false, "REVERB" },
+
+        { "Focusrite Forte", "FORTE",
+          "Focusrite (Rupert Neve)  -  England  -  1988",
+          "Rupert Neve's grand console for Focusrite, with ISA 110 equalisers and ISA 130 dynamics on every channel; so "
+          "expensive that only a handful were built, and it nearly finished the company. The ISA 110's EQ: a high "
+          "and a low shelf, two swept mids with Q, swept high- and low-pass filters.",
+          "Class-A and transformer-coupled, but faster and more open than the old Neves: a detailed, silky top and a "
+          "deep low end.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.94f, 0.12f, 0.97f, 0.06f, 5.0f, 0.0f, false, "REVERB" },
+
+        { "Amek 9098", "9098",
+          "Amek (Rupert Neve)  -  England  -  1990s",
+          "Rupert Neve's designs for Amek in the 90s, the 9098 console and its channel strips: class-A, transformer "
+          "inputs and outputs, a four-band equaliser and his gentle 'silk'-era voicing.",
+          "Warm and wide with a sweet top and a big, smooth low end; less thick than a 70s Neve, more open.",
+          true, true, EqStyle::bands, false, false, false, false,
+          0.94f, 0.14f, 0.97f, 0.07f, 6.0f, 0.0f, false, "REVERB" },
     };
     return desks[juce::jlimit (0, numDesks - 1, (int) d)];
 }

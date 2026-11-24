@@ -105,6 +105,27 @@ inline AmpSpec ampSpecOf (Desk d, bool main)
             a = main ? AmpSpec { 20.0f, 0.55f, 4.0f, 0.20f, 0.0f, 30.0f, 0.40f, 18.0f, 0.0f }
                      : AmpSpec { 16.0f, 0.50f, 4.0f, 0.40f, 0.0f, 30.0f, 0.40f, 18.0f, 0.0f };
             break;
+        case Desk::helios:
+            // discrete transistor stages and transformers: second harmonic and iron in the lows
+            a = main ? AmpSpec { 24.0f, 0.82f, 20.0f, 0.06f, 0.08f, 40.0f, 0.10f, 8.0f, 0.0f, 0.03f }
+                     : AmpSpec { 23.0f, 0.78f, 20.0f, 0.12f, 0.10f, 40.0f, 0.15f, 10.0f, 0.0f, 0.04f };
+            break;
+        case Desk::api:
+            // the 2520 op-amp and the 2503 transformer
+            a = AmpSpec { 28.0f, 0.90f, 20.0f, 0.02f, 0.06f, 35.0f, 0.05f, 6.0f, 0.0f, 0.04f };
+            break;
+        case Desk::mci500:
+            a = AmpSpec { 25.0f, 0.93f, 20.0f, 0.0f, 0.0f, 30.0f, 0.0f, 5.0f, 0.0f, 0.03f };
+            break;
+        case Desk::harrison32:
+            a = AmpSpec { 26.0f, 0.95f, 20.0f, 0.0f, 0.0f, 30.0f, 0.0f, 4.0f, 0.0f, 0.008f };
+            break;
+        case Desk::focusrite:
+            a = AmpSpec { 27.0f, 0.90f, 20.0f, 0.015f, 0.03f, 30.0f, 0.03f, 3.0f, 0.0f, 0.01f };
+            break;
+        case Desk::amek9098:
+            a = AmpSpec { 27.0f, 0.90f, 20.0f, 0.02f, 0.04f, 30.0f, 0.04f, 3.0f, 0.0f, 0.012f };
+            break;
         case Desk::ua610:
             // Paul McManus (owner and historian of an original 1960 United console, UA's webzine): the
             // plug-in output line amps deliver 'a healthy +30 dBm'. The 610 channel's own output stage is
