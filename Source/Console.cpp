@@ -12,51 +12,51 @@ const DeskSkin& DeskSkin::of (Desk d)
         // WHITMAN: PEQUOD charcoal, ink blue
         { Pequod::Colours::bg, Pequod::Colours::panelHi, Pequod::Colours::panel, Pequod::Colours::line,
           Pequod::Colours::text, Pequod::Colours::textDim, Pequod::Colours::mustard, Pequod::Colours::well,
-          false, false, true, 76, 236 },
+          false, false, true, channelWidth, 236 },
         // REDD.51: EMI grey-green painted steel, cream engraving, black bakelite knobs, Painton quadrant faders, VUs
         { C (0xff252825), C (0xff737a73), C (0xff5f665f), C (0xff383d39),
           C (0xfff2eee0), C (0xffd2cfc0), C (0xfff0dfb0), C (0xff1b1d1b),
-          true, true, true, 94, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
+          true, true, true, channelWidth, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
         // REDD.37: the same EMI family, an older, browner grey-green
         { C (0xff262622), C (0xff74776a), C (0xff606355), C (0xff3a3c34),
           C (0xfff2ecda), C (0xffd4cfba), C (0xfff2d9a0), C (0xff1c1c19),
-          true, true, true, 94, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
+          true, true, true, channelWidth, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
         // TG12345 Mk I: pale grey modules, black legends, black knobs, straight faders, VUs
         { C (0xff1f2224), C (0xffaeb3b6), C (0xff989da1), C (0xff5c6266),
           C (0xff15181a), C (0xff3a4044), C (0xffd8492e), C (0xff15181a),
-          true, false, true, 104, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
+          true, false, true, channelWidth, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
         // TG12345 Mk IV: the same
         { C (0xff1f2224), C (0xffaeb3b6), C (0xff989da1), C (0xff5c6266),
           C (0xff15181a), C (0xff3a4044), C (0xffd8492e), C (0xff15181a),
-          true, false, true, 104, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
+          true, false, true, channelWidth, 236, 0, "ABBEY ROAD  -  STUDIO TWO" },
         // Trident A-Range: aubergine modules, cream legends, aluminium knobs, slide-fader EQ
         { C (0xff1d1519), C (0xff5a3448), C (0xff47283a), C (0xff2b1822),
           C (0xfff1e7d6), C (0xffcdbfae), C (0xffeec06a), C (0xff1a1214),
-          true, false, true, 104, 236, 1, "TRIDENT STUDIOS  -  LONDON" },
+          true, false, true, channelWidth, 236, 1, "TRIDENT STUDIOS  -  LONDON" },
         // Neve 8028: blue-grey modules, white legends, grey knobs with coloured caps
         { C (0xff1b1f23), C (0xff5d6c7b), C (0xff4c5a67), C (0xff323b44),
           C (0xfff3f4f2), C (0xffcdd3d8), C (0xffe9c46a), C (0xff15191c),
-          true, false, true, 104, 236, 2, "SOUND CITY  -  VAN NUYS" },
+          true, false, true, channelWidth, 236, 2, "SOUND CITY  -  VAN NUYS" },
         // SSL 4000 E: dark grey, white legends, colour-capped knobs
         { C (0xff151617), C (0xff43464b), C (0xff35383c), C (0xff23252a),
           C (0xfff2f2f2), C (0xffbfc2c6), C (0xfff0c24a), C (0xff111213),
-          true, false, true, 126, 236, 2, "OXFORD  -  ENGLAND", 1 },
+          true, false, true, channelWidth, 236, 2, "OXFORD  -  ENGLAND", 1 },
         // Neotek Elite: light grey, dark legends, grey knobs with coloured caps
         { C (0xff1e2022), C (0xffb2b4b3), C (0xff9fa2a1), C (0xff5d6062),
           C (0xff16181a), C (0xff3a3e41), C (0xff2f6fae), C (0xff16181a),
-          true, false, true, 104, 236, 2, "ELECTRICAL AUDIO  -  CHICAGO", 2 },
+          true, false, true, channelWidth, 236, 2, "ELECTRICAL AUDIO  -  CHICAGO", 2 },
         // RCA 76-D: RCA's dark grey broadcast enamel, cream engraving, black bakelite knobs, a VU
         { C (0xff1d1f21), C (0xff55595c), C (0xff45494c), C (0xff2c2f31),
           C (0xfff0eadb), C (0xffc9c3b3), C (0xffe8c46a), C (0xff16181a),
-          true, false, true, 94, 236, 0, "SUN STUDIO  -  MEMPHIS" },
+          true, false, true, channelWidth, 236, 0, "SUN STUDIO  -  MEMPHIS" },
         // REDD.17: the EMI family's grey-green, a shade lighter
         { C (0xff262824), C (0xff7c8276), C (0xff676d61), C (0xff3c4039),
           C (0xfff2eedf), C (0xffd4d0bf), C (0xfff0dcaa), C (0xff1c1d1a),
-          true, false, true, 94, 236, 0, "ABBEY ROAD" },
+          true, false, true, channelWidth, 236, 0, "ABBEY ROAD" },
         // Universal Audio 610: blue-grey hammertone, cream legends, black knobs
         { C (0xff1c2024), C (0xff5f6f7c), C (0xff4e5c68), C (0xff323c45),
           C (0xfff1ede2), C (0xffcfd2cf), C (0xffe9c46a), C (0xff151a1e),
-          true, false, true, 94, 236, 0, "UNITED RECORDING  -  HOLLYWOOD" },
+          true, false, true, channelWidth, 236, 0, "UNITED RECORDING  -  HOLLYWOOD" },
     }};
 
     // How each was built (sources in Desk.h; the look from the makers' descriptions and the reviews of
@@ -140,7 +140,6 @@ const DeskSkin& DeskSkin::of (Desk d)
         r.oneShell = true;
         r.channelMeters = false;
         r.rotaryFaders = true;
-        r.stripWidth = 104;
         r.masterWidth = 280;
         r.muteLamp = C (0xffffb04a);
         r.soloLamp = C (0xfff2ead2);
@@ -149,11 +148,13 @@ const DeskSkin& DeskSkin::of (Desk d)
         auto& u = k[(size_t) Desk::ua610];
         u.channelMeters = false;
         u.rotaryFaders = true;
-        u.stripWidth = 104;
         u.masterWidth = 270;
         u.muteLamp = C (0xffffb04a);
         u.soloLamp = C (0xfff2ead2);
     }
+    // every desk's channels the same width, so a mix keeps its shape (and its scroll) when the desk
+    // changes: the widest any desk's controls need
+    for (auto& d : k) d.stripWidth = channelWidth;
     return k; }();
     return skins[(size_t) juce::jlimit (0, numDesks - 1, (int) d)];
 }

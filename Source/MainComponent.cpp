@@ -214,10 +214,10 @@ void MainComponent::rebuildStrips()
     if (dev == nullptr)
     {
         n = juce::jlimit (0, maxStrips, juce::SystemStats::getEnvironmentVariable ("WHITMAN_PREVIEW_STRIPS", "0").getIntValue());
-        // (and WHITMAN_PREVIEW_DESK=<number> shows that desk)
-        if (const auto pd = juce::SystemStats::getEnvironmentVariable ("WHITMAN_PREVIEW_DESK", {}); pd.isNotEmpty())
-            engine.desk = (int) deskFromInt (pd.getIntValue());
     }
+    // (and WHITMAN_PREVIEW_DESK=<number> shows that desk, for pictures of each)
+    if (const auto pd = juce::SystemStats::getEnvironmentVariable ("WHITMAN_PREVIEW_DESK", {}); pd.isNotEmpty())
+        engine.desk = (int) deskFromInt (pd.getIntValue());
     while (strips.size() < n)
     {
         auto* s = strips.add (new ChannelStrip (engine, strips.size(), names));

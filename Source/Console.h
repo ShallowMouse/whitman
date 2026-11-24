@@ -9,6 +9,9 @@ namespace whitman
 
 //==============================================================================
 /** How a desk looks: colours, knobs, faders, meters. */
+/** Every desk's channel strips are this wide. */
+constexpr int channelWidth = 104;
+
 struct DeskSkin
 {
     juce::Colour frame;           // behind the strips
